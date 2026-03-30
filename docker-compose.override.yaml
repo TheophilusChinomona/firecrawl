@@ -1,0 +1,74 @@
+# Docker Compose Override — Local Development / Fallback Deployment
+#
+# Applies resource limits, LLM API key env vars, restart policies,
+# and healthchecks on top of the base docker-compose.yaml.
+#
+# Usage (copy this file into the firecrawl-fork directory, then):
+#   docker compose up -d
+#   (Docker Compose auto-merges docker-compose.override.yaml with docker-compose.yaml)
+#
+# Required env vars (set in shell or .env file):
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, FIRECRAWL_API_KEY
+
+services:
+
+  api:
+    restart: unless-stopped
+    # Local dev limits — base defaults are 4 CPU / 8G, reduced here for local use
+    cpus: 2.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    environment:
+      # OPENAI_API_KEY is in x-common-env in base; adding safe defaults here
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-test-key}
+    healthcheck:
+      # curl not in image — use node to check root path (returns 200 with API info)
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  playwright-service:
+    restart: unless-stopped
+    # Base already sets cpus: 2.0 / mem_limit: 4G — explicit here for clarity
+    cpus: 2.0
+    mem_limit: 4g
+    memswap_limit: 4g
+    healthcheck:
+      # playwright-service only exposes POST /scrape — check TCP port is open via node
+      test: ["CMD", "node", "-e", "require('net').createConnection(3000,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    memswap_limit: 512m
+    # Override base healthcheck to give RabbitMQ more startup time on local dev
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  nuq-postgres:
+    restart: unless-stopped

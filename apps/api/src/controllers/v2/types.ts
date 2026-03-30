@@ -1547,6 +1547,8 @@ export function fromV1ScrapeOptions(
               prompt: opts?.prompt,
             };
             return fmt;
+          } else if (x === "screenshot") {
+            return { type: "screenshot" as const, fullPage: false };
           } else if (x === "screenshot@fullPage") {
             return { type: "screenshot" as const, fullPage: true };
           } else if (x === "branding") {

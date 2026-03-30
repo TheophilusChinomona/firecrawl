@@ -178,6 +178,8 @@ interface UrlModel {
   headers?: { [key: string]: string };
   check_selector?: string;
   skip_tls_verification?: boolean;
+  screenshot?: boolean;
+  screenshot_full_page?: boolean;
 }
 
 let browser: Browser;
@@ -354,7 +356,7 @@ app.get('/health', async (req: Request, res: Response) => {
 });
 
 app.post('/scrape', async (req: Request, res: Response) => {
-  const { url, wait_after_load = 0, timeout = 15000, headers, check_selector, skip_tls_verification = false }: UrlModel = req.body;
+  const { url, wait_after_load = 0, timeout = 15000, headers, check_selector, skip_tls_verification = false, screenshot = false, screenshot_full_page = false }: UrlModel = req.body;
 
   console.log(`================= Scrape Request =================`);
   console.log(`URL: ${url}`);
@@ -363,6 +365,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
   console.log(`Headers: ${headers ? JSON.stringify(headers) : 'None'}`);
   console.log(`Check Selector: ${check_selector ? check_selector : 'None'}`);
   console.log(`Skip TLS Verification: ${skip_tls_verification}`);
+  console.log(`Screenshot: ${screenshot}, Full Page: ${screenshot_full_page}`);
   console.log(`==================================================`);
 
   if (!url) {
@@ -427,11 +430,27 @@ app.post('/scrape', async (req: Request, res: Response) => {
       console.log(`🚨 Scrape failed with status code: ${result.status} ${pageError}`);
     }
 
+    let screenshotData: string | undefined;
+    if (screenshot && !pageError) {
+      try {
+        const screenshotBuffer = await page.screenshot({
+          type: 'jpeg',
+          quality: 80,
+          fullPage: screenshot_full_page,
+        });
+        screenshotData = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
+        console.log(`📸 Screenshot captured (${screenshotBuffer.length} bytes)`);
+      } catch (screenshotError) {
+        console.error('Screenshot failed:', screenshotError);
+      }
+    }
+
     res.json({
       content: result.content,
       pageStatusCode: result.status,
       contentType: result.contentType,
-      ...(pageError && { pageError })
+      ...(pageError && { pageError }),
+      ...(screenshotData && { screenshot: screenshotData }),
     });
 
   } catch (error) {
