@@ -1,0 +1,204 @@
+# Firecrawl — Dokploy / Docker Compose deployment
+#
+# Place this file at the root of the repo and point your Dokploy app at it.
+#
+# Dokploy setup steps:
+#   1. Create a new "Docker Compose" app in Dokploy
+#   2. Connect repo: TheophilusChinomona/firecrawl, branch: theo/custom-deploy
+#   3. Set compose file path to: docker-compose.dokploy.yml
+#   4. Set all env vars from .env.dokploy.example in Dokploy's environment panel
+#   5. Add a domain in Dokploy pointing at the "api" service on port 3002
+#   6. Deploy — Dokploy handles Traefik routing and TLS automatically
+#
+# After deploy, update FIRECRAWL_API_URL in your local .mcp.json to the new domain.
+
+name: firecrawl
+
+x-common-env: &common-env
+  # Redis
+  REDIS_URL: "redis://redis:6379"
+  REDIS_RATE_LIMIT_URL: "redis://redis:6379"   # must be set — missing causes ECONNREFUSED 127.0.0.1
+  REDIS_EVICT_URL: "redis://redis:6379"
+  NUQ_REDIS_URL: "redis://redis:6379"
+
+  # RabbitMQ
+  RABBITMQ_URL: "amqp://rabbitmq:5672"
+  NUQ_RABBITMQ_URL: "amqp://rabbitmq:5672"
+
+  # Postgres
+  DATABASE_URL: "postgresql://${POSTGRES_USER:-firecrawl}:${POSTGRES_PASSWORD:-firecrawl}@nuq-postgres:5432/${POSTGRES_DB:-firecrawl}"
+  NUQ_DATABASE_URL: "postgresql://${POSTGRES_USER:-firecrawl}:${POSTGRES_PASSWORD:-firecrawl}@nuq-postgres:5432/${POSTGRES_DB:-firecrawl}"
+  POSTGRES_USER: "${POSTGRES_USER:-firecrawl}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-firecrawl}"
+  POSTGRES_DB: "${POSTGRES_DB:-firecrawl}"
+  POSTGRES_HOST: "nuq-postgres"
+  POSTGRES_PORT: "5432"
+
+  # API
+  HOST: "0.0.0.0"
+  PORT: "3002"
+  PLAYWRIGHT_MICROSERVICE_URL: "http://playwright-service:3000/scrape"   # /scrape suffix is required
+  USE_DB_AUTHENTICATION: "false"
+  NUM_WORKERS_PER_QUEUE: "${NUM_WORKERS_PER_QUEUE:-4}"
+  CRAWL_CONCURRENT_REQUESTS: "${CRAWL_CONCURRENT_REQUESTS:-10}"
+  MAX_CONCURRENT_JOBS: "${MAX_CONCURRENT_JOBS:-5}"
+  BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-5}"
+  BLOCK_MEDIA: "${BLOCK_MEDIA:-true}"
+  LOGGING_LEVEL: "${LOGGING_LEVEL:-INFO}"
+
+  # LLM — OpenRouter via OpenAI-compatible endpoint
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
+  MODEL_NAME: "${MODEL_NAME:-nvidia/nemotron-3-super-120b-a12b:free}"
+
+  # Optional
+  BULL_AUTH_KEY: "${BULL_AUTH_KEY}"
+  SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL}"
+  TEST_API_KEY: "${TEST_API_KEY:-test-key}"
+  SEARXNG_ENDPOINT: "${SEARXNG_ENDPOINT}"
+
+
+services:
+
+  # ─── Firecrawl API ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api   # sharedLibs/ lives here — use apps/api as context, NOT repo root
+      dockerfile: Dockerfile
+    environment:
+      <<: *common-env
+      ENV: production
+    restart: unless-stopped
+    networks:
+      - firecrawl-internal
+      - dokploy-network          # needed so Dokploy's Traefik can reach this service
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      nuq-postgres:
+        condition: service_started
+      playwright-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/v0/health/readiness',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    cpus: 4.0
+    mem_limit: 8g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Playwright browser service ───────────────────────────────────────────
+  playwright-service:
+    build:
+      context: ./apps/playwright-service-ts
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3000
+      BLOCK_MEDIA: "${BLOCK_MEDIA:-true}"
+      MAX_CONCURRENT_PAGES: "${CRAWL_CONCURRENT_REQUESTS:-10}"
+    restart: unless-stopped
+    networks:
+      - firecrawl-internal
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=1g
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').createConnection(3000,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    cpus: 2.0
+    mem_limit: 4g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    command: redis-server --bind 0.0.0.0 --save 60 1 --loglevel warning
+    restart: unless-stopped
+    networks:
+      - firecrawl-internal
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    cpus: 0.5
+    mem_limit: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── RabbitMQ ─────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    networks:
+      - firecrawl-internal
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s   # RabbitMQ needs ~60s to fully init — do not lower this
+    cpus: 1.0
+    mem_limit: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Postgres (custom nuq schema) ─────────────────────────────────────────
+  nuq-postgres:
+    build:
+      context: ./apps/nuq-postgres
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-firecrawl}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-firecrawl}"
+      POSTGRES_DB: "${POSTGRES_DB:-firecrawl}"
+    restart: unless-stopped
+    networks:
+      - firecrawl-internal
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    cpus: 0.5
+    mem_limit: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  postgres-data:
+
+
+networks:
+  firecrawl-internal:
+    driver: bridge
+  dokploy-network:
+    external: true    # created and managed by Dokploy — do not remove
