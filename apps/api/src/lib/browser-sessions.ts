@@ -4,9 +4,6 @@ import { logger as _logger } from "./logger";
 
 const logger = _logger.child({ module: "browser-sessions" });
 
-export const MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM = 20;
-const ACTIVE_COUNT_CACHE_TTL_SECONDS = 300;
-
 function activeBrowserCountKey(teamId: string): string {
   return `browser_sessions:active_count:${teamId}`;
 }
@@ -236,56 +233,49 @@ export async function updateBrowserSessionCreditsUsed(
 }
 
 // ---------------------------------------------------------------------------
-// Active session count (cached)
+// Prompt usage tracking (Redis)
 // ---------------------------------------------------------------------------
 
-async function countActiveBrowserSessionsFromDb(
-  teamId: string,
-): Promise<number> {
-  const { count, error } = await supabase_service
-    .from(TABLE)
-    .select("*", { count: "exact", head: true })
-    .eq("team_id", teamId)
-    .eq("status", "active");
+const PROMPT_FLAG_TTL_SECONDS = 7200; // 2 hours, well beyond max session TTL
 
-  if (error) {
-    logger.error("Failed to count active browser sessions", { error, teamId });
-    throw new Error(
-      `Failed to count active browser sessions: ${error.message}`,
-    );
-  }
-
-  return count ?? 0;
+function promptFlagKey(sessionId: string): string {
+  return `browser_session:used_prompt:${sessionId}`;
 }
 
-/**
- * Returns the number of active browser sessions for a team.
- * Uses a Redis cache with a short TTL to avoid hitting the DB on every request.
- */
-export async function getActiveBrowserSessionCount(
-  teamId: string,
-): Promise<number> {
-  const cacheKey = activeBrowserCountKey(teamId);
-
+export async function markBrowserSessionUsedPrompt(
+  sessionId: string,
+): Promise<void> {
   try {
-    const cached = await getValue(cacheKey);
-    if (cached !== null) {
-      return parseInt(cached, 10);
-    }
+    await setValue(promptFlagKey(sessionId), "1", PROMPT_FLAG_TTL_SECONDS);
   } catch {
-    // Redis down — fall through to DB
+    // Redis down — non-fatal, will fall back to standard rate at billing time
   }
-
-  const count = await countActiveBrowserSessionsFromDb(teamId);
-
-  try {
-    await setValue(cacheKey, String(count), ACTIVE_COUNT_CACHE_TTL_SECONDS);
-  } catch {
-    // Redis down — non-fatal
-  }
-
-  return count;
 }
+
+export async function didBrowserSessionUsePrompt(
+  sessionId: string,
+): Promise<boolean> {
+  try {
+    const val = await getValue(promptFlagKey(sessionId));
+    return val === "1";
+  } catch {
+    return false;
+  }
+}
+
+export async function clearBrowserSessionPromptFlag(
+  sessionId: string,
+): Promise<void> {
+  try {
+    await deleteKey(promptFlagKey(sessionId));
+  } catch {
+    // non-fatal
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Active session count (cached)
+// ---------------------------------------------------------------------------
 
 /**
  * Invalidate the cached active session count for a team.
