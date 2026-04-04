@@ -1,725 +1,196 @@
-<h3 align="center">
-  <a name="readme-top"></a>
-  <img
-    src="https://raw.githubusercontent.com/firecrawl/firecrawl/main/img/firecrawl_logo.png"
-    height="200"
-  >
-</h3>
+# Firecrawl Fork — Self-Hosted (Theochinomona.tech)
 
-<div align="center">
-  <a href="https://github.com/firecrawl/firecrawl/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/firecrawl/firecrawl" alt="License">
-  </a>
-  <a href="https://pepy.tech/project/firecrawl-py">
-    <img src="https://static.pepy.tech/badge/firecrawl-py" alt="Downloads">
-  </a>
-  <a href="https://GitHub.com/firecrawl/firecrawl/graphs/contributors">
-    <img src="https://img.shields.io/github/contributors/firecrawl/firecrawl.svg" alt="GitHub Contributors">
-  </a>
-  <a href="https://firecrawl.dev">
-    <img src="https://img.shields.io/badge/Visit-firecrawl.dev-orange" alt="Visit firecrawl.dev">
-  </a>
-</div>
-
-<div>
-  <p align="center">
-    <a href="https://twitter.com/firecrawl">
-      <img src="https://img.shields.io/badge/Follow%20on%20X-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X" />
-    </a>
-    <a href="https://www.linkedin.com/company/104100957">
-      <img src="https://img.shields.io/badge/Follow%20on%20LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn" />
-    </a>
-    <a href="https://discord.gg/firecrawl">
-      <img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" />
-    </a>
-  </p>
-</div>
+> Fork of [mendable-ai/firecrawl](https://github.com/mendable-ai/firecrawl).
+> Self-hosted on GCE k3s at `34.12.138.228`.
+>
+> **This README documents this fork specifically** — what was changed vs upstream, how to build and deploy, and how the cluster works. For the upstream product docs, see [firecrawl.dev/docs](https://docs.firecrawl.dev).
 
 ---
 
-# **🔥 Firecrawl**
+## What This Fork Changes
 
-**Power AI agents with clean web data.** The API to search, scrape, and interact with the web at scale. Open source and available as a [hosted service](https://firecrawl.dev/?ref=github).
+Two patches on top of upstream:
 
-_Pst. Hey, you, join our stargazers :)_
+### 1. Screenshot support in Playwright microservice
 
-<a href="https://github.com/firecrawl/firecrawl">
-  <img src="https://img.shields.io/github/stars/firecrawl/firecrawl.svg?style=social&label=Star&maxAge=2592000" alt="GitHub stars">
-</a>
+**Files changed:** `apps/playwright-service-ts/api.ts`, `engines/playwright/index.ts`, `engines/index.ts`
 
----
+Upstream's Playwright microservice had no screenshot capability. This fork adds:
+- `api.ts` accepts `screenshot` and `screenshot_full_page` boolean params
+- Calls `page.screenshot({ type: 'jpeg', quality: 80 })` and returns the result as a base64 data URL
+- The playwright engine passes these params and maps the response
+- `playwright.features.screenshot` is set to `true` in `engines/index.ts`
 
-## Why Firecrawl?
+### 2. Screenshot format detection bug fix
 
-- **Industry-leading reliability**: Covers 96% of the web, including JS-heavy pages — no proxy headaches, just clean data ([see benchmarks](https://www.firecrawl.dev/blog/the-worlds-best-web-data-api-v25))
-- **Blazingly fast**: P95 latency of 3.4s across millions of pages, built for real-time agents and dynamic apps
-- **LLM-ready output**: Clean markdown, structured JSON, screenshots, and more — spend fewer tokens, build better AI apps
-- **We handle the hard stuff**: Rotating proxies, orchestration, rate limits, JS-blocked content, and more — zero configuration
-- **Agent ready**: Connect Firecrawl to any AI agent or MCP client with a single command
-- **Media parsing**: Parse and extract content from web-hosted PDFs, DOCX, and more
-- **Actions**: Click, scroll, write, wait, and press before extracting content
-- **Open source**: Developed transparently and collaboratively — [join our community](https://github.com/firecrawl/firecrawl)
+**File changed:** `apps/api/src/controllers/v2/types.ts`
 
----
+Upstream's `fromV1ScrapeOptions` converted `screenshot@fullPage` correctly but left plain `"screenshot"` as a raw string. This caused `hasFormatOfType` to never detect the screenshot format, so `buildFeatureFlags` never added the `screenshot` flag, playwright was never selected as the engine, and screenshots silently returned empty with `Engines tried: []`.
 
-## Feature Overview
-
-**Core Endpoints**
-
-| Feature | Description |
-|---------|-------------|
-| [**Search**](#search) | Search the web and get full page content from results |
-| [**Scrape**](#scrape) | Convert any URL to markdown, HTML, screenshots, or structured JSON |
-| [**Interact**](#interact) | Scrape a page, then interact with it using AI prompts or code |
-
-**More**
-
-| Feature | Description |
-|---------|-------------|
-| [**Agent**](#agent) | Automated data gathering, just describe what you need |
-| [**Crawl**](#crawl) | Scrape all URLs of a website with a single request |
-| [**Map**](#map) | Discover all URLs on a website instantly |
-| [**Batch Scrape**](#batch-scrape) | Scrape thousands of URLs asynchronously |
+**Fix:** Added an explicit `"screenshot"` case in the format map alongside `"screenshot@fullPage"`.
 
 ---
 
-## Quick Start
+## Architecture
 
-Sign up at [firecrawl.dev](https://firecrawl.dev) to get your API key. Try the [playground](https://firecrawl.dev/playground) to test it out.
-
-### Search
-
-Search the web and get full content from results.
-
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-search_result = app.search("firecrawl web scraping", limit=5)
+```
+GCE VM: 34.12.138.228
+└── k3s cluster (namespace: firecrawl)
+    ├── firecrawl-api        — core REST API + worker queues (Node.js)
+    ├── playwright           — headless browser microservice (port 3003 on pod, 3000 on service)
+    ├── redis                — job queues
+    ├── rabbitmq             — message broker
+    ├── postgres             — persistent storage
+    └── ingress              — TLS termination, routes external traffic
 ```
 
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
+**MCP server** lives separately at `../firecrawl-mcp-server/` and calls this API over HTTP.
 
-**Node.js**
-```javascript
-import Firecrawl from '@mendable/firecrawl-js';
+**Engines available (self-hosted only):**
+- `playwright` — full browser rendering, JS execution, screenshots
+- `fetch` — lightweight HTML-only scraping
 
-const app = new Firecrawl({apiKey: "fc-YOUR_API_KEY"});
+`fire-engine` (Firecrawl Cloud's proprietary browser fleet) is **not available** on self-hosted.
 
-app.search("firecrawl web scraping", { limit: 5 })
-```
+---
 
-**cURL**
+## Build & Deploy
+
+SSH key: `~/.ssh/google_compute_engine`
+
+### Build the API image
+
 ```bash
-curl -X POST 'https://api.firecrawl.dev/v2/search' \
--H 'Authorization: Bearer fc-YOUR_API_KEY' \
--H 'Content-Type: application/json' \
--d '{
-  "query": "firecrawl web scraping",
-  "limit": 5
-}'
+# Must use apps/api/ as the Docker build context (not repo root — sharedLibs/ lives inside apps/api/)
+docker build -t firecrawl-api:latest -f apps/api/Dockerfile apps/api/
 ```
 
-**CLI**
+### Push to k3s (no registry — direct image import)
+
 ```bash
-firecrawl search "firecrawl web scraping" --limit 5
-```
-</details>
+# Export image locally
+docker save firecrawl-api:latest | gzip > /tmp/firecrawl-api.tar.gz
 
-Output:
-```json
-[
-  {
-    "url": "https://firecrawl.dev",
-    "title": "Firecrawl",
-    "markdown": "Turn websites into..."
-  },
-  {
-    "url": "https://docs.firecrawl.dev",
-    "title": "Firecrawl Docs",
-    "markdown": "# Getting Started..."
-  }
-]
+# Copy to VM
+scp -i ~/.ssh/google_compute_engine /tmp/firecrawl-api.tar.gz theoc@34.12.138.228:/tmp/
+
+# SSH into VM and import
+ssh -i ~/.ssh/google_compute_engine theoc@34.12.138.228
+sudo k3s ctr images import /tmp/firecrawl-api.tar.gz
+exit
+
+# Restart the deployment
+kubectl rollout restart deployment/firecrawl-api -n firecrawl
+kubectl rollout status deployment/firecrawl-api -n firecrawl
 ```
 
-### Scrape
+### Apply k8s manifests
 
-Get LLM-ready data from any website — markdown, JSON, screenshots, and more.
+Manifests live in `../k8s/` (project root, not this directory).
 
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-result = app.scrape('firecrawl.dev')
-```
-
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
-
-**Node.js**
-```javascript
-import Firecrawl from '@mendable/firecrawl-js';
-
-const app = new Firecrawl({ apiKey: "fc-YOUR_API_KEY" });
-
-app.scrape('firecrawl.dev')
-```
-
-**cURL**
 ```bash
-curl -X POST 'https://api.firecrawl.dev/v2/scrape' \
--H 'Authorization: Bearer fc-YOUR_API_KEY' \
--H 'Content-Type: application/json' \
--d '{
-  "url": "firecrawl.dev"
-}'
-```
+# Apply secrets first (never commit secrets — use apply-secrets.sh)
+bash ../scripts/apply-secrets.sh
 
-**CLI**
-```bash
-firecrawl scrape https://firecrawl.dev
-firecrawl https://firecrawl.dev --only-main-content
-```
-</details>
+# Apply all manifests
+kubectl apply -f ../k8s/ -n firecrawl
 
-Output:
-```
-# Firecrawl
-
-Firecrawl is a powerful web scraping tool that makes it easy
-to extract clean data from any website.
-
-## Features
-- Scrape: Markdown from any page
-- Search: Search + scrape the web
-- Map: Discover all site URLs
-- Agent: Extract with AI prompts
-```
-
-### Interact
-
-Scrape a page, then interact with it using AI prompts or code.
-
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-result = app.scrape("https://amazon.com")
-scrape_id = result.metadata.scrape_id
-
-app.interact(scrape_id, prompt="Search for 'mechanical keyboard'")
-app.interact(scrape_id, prompt="Click the first result")
-```
-
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
-
-**Node.js**
-```javascript
-import Firecrawl from '@mendable/firecrawl-js';
-
-const app = new Firecrawl({apiKey: "fc-YOUR_API_KEY"});
-
-const result = await app.scrape("https://amazon.com");
-
-await app.interact(result.metadata.scrapeId, {
-  prompt: "Search for 'mechanical keyboard'"
-});
-await app.interact(result.metadata.scrapeId, {
-  prompt: "Click the first result"
-});
-```
-
-**cURL**
-```bash
-# 1. Scrape the page
-curl -X POST 'https://api.firecrawl.dev/v2/scrape' \
--H 'Authorization: Bearer fc-YOUR_API_KEY' \
--H 'Content-Type: application/json' \
--d '{"url": "https://amazon.com"}'
-
-# 2. Interact with the page (use scrapeId from step 1)
-curl -X POST 'https://api.firecrawl.dev/v2/scrape/SCRAPE_ID/interact' \
--H 'Authorization: Bearer fc-YOUR_API_KEY' \
--H 'Content-Type: application/json' \
--d '{"prompt": "Search for mechanical keyboard"}'
-```
-
-**CLI**
-```bash
-firecrawl scrape https://amazon.com
-firecrawl interact exec --prompt "Search for 'mechanical keyboard'"
-firecrawl interact exec --prompt "Click the first result"
-```
-</details>
-
-Output:
-```json
-{
-  "success": true,
-  "output": "Keyboard available at $100",
-  "liveViewUrl": "https://liveview.firecrawl.dev/..."
-}
+# Verify
+kubectl get pods -n firecrawl
 ```
 
 ---
 
-## Power Your Agent
+## Environment Variables
 
-Connect Firecrawl to any AI agent or MCP client in minutes.
+Key variables the API pod needs (set via k8s secret):
 
-### Skill
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FIRECRAWL_API_KEY` | Yes | API key for authenticating requests to this instance |
+| `PLAYWRIGHT_MICROSERVICE_URL` | Yes | Must be `http://playwright:3000/scrape` — **include the `/scrape` path** |
+| `REDIS_URL` | Yes | `redis://redis:6379` |
+| `DATABASE_URL` | Yes | Postgres connection string |
+| `PORT` | No | Defaults to 3002 |
 
-Give your agent easy access to real-time web data with one command.
-
-```bash
-npx -y firecrawl-cli@latest init --all --browser
-```
-
-Restart your agent after installing. Works with [Claude Code](https://claude.ai/code), [Antigravity](https://antigravity.google), [OpenCode](https://opencode.ai), and more.
-
-### MCP
-
-Connect any MCP-compatible client to the web in seconds.
-
-```json
-{
-  "mcpServers": {
-    "firecrawl-mcp": {
-      "command": "npx",
-      "args": ["-y", "firecrawl-mcp"],
-      "env": {
-        "FIRECRAWL_API_KEY": "fc-YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Agent Onboarding
-
-Are you an AI agent? Fetch this skill to sign up your user, get an API key, and start building with Firecrawl.
-
-```bash
-curl -s https://firecrawl.dev/agent-onboarding/SKILL.md
-```
-
-See the [Skill + CLI documentation](https://docs.firecrawl.dev/sdks/cli) for all available commands. For MCP, see [firecrawl-mcp-server](https://github.com/firecrawl/firecrawl-mcp-server).
+> **`PLAYWRIGHT_MICROSERVICE_URL` must include `/scrape`** — without it all playwright requests return `404 Cannot POST /`. The service port is 3000 (which `targetPort`s to pod port 3003).
 
 ---
 
-## More Endpoints
+## Known Quirks
 
-### Agent
+### Playwright port mismatch
 
-**The easiest way to get data from the web.** Describe what you need, and our AI agent searches, navigates, and extracts it. No URLs required.
+The `playwright-scraper-api` pod listens on **port 3003**, not 3000. The k8s Service uses `targetPort: 3003` → `port: 3000`. This is intentional and matches the deployed config. If you see `ECONNREFUSED` on playwright scrapes:
 
-Agent is the evolution of our `/extract` endpoint: faster, more reliable, and doesn't require you to know the URLs upfront.
 ```bash
-curl -X POST 'https://api.firecrawl.dev/v2/agent' \
-  -H 'Authorization: Bearer fc-YOUR_API_KEY' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "Find the pricing plans for Notion"
-  }'
+kubectl get service playwright -n firecrawl -o jsonpath='{.spec.ports[0].targetPort}'
+# Should be 3003. Fix if wrong:
+kubectl patch service playwright -n firecrawl --type='json' \
+  -p='[{"op":"replace","path":"/spec/ports/0/targetPort","value":3003}]'
 ```
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "result": "Notion offers the following pricing plans:\n\n1. Free - $0/month...\n2. Plus - $10/seat/month...\n3. Business - $18/seat/month...",
-    "sources": ["https://www.notion.so/pricing"]
-  }
-}
-```
+### PLAYWRIGHT_MICROSERVICE_URL path suffix
 
-#### Agent with Structured Output
+Must end in `/scrape`. Correct value: `http://playwright:3000/scrape`.
+Without `/scrape`, the API gets `404 Cannot POST /` for every playwright scrape.
 
-Use a schema to get structured data:
-```python
-from firecrawl import Firecrawl
-from pydantic import BaseModel, Field
-from typing import List, Optional
+### Screenshots require playwright
 
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
+The `fetch` engine has no screenshot capability. Any scrape request with `formats: ["screenshot"]` must go through playwright. The format detection fix in this fork ensures the correct engine is selected automatically when screenshot is requested.
 
-class Founder(BaseModel):
-    name: str = Field(description="Full name of the founder")
-    role: Optional[str] = Field(None, description="Role or position")
+### No fire-engine
 
-class FoundersSchema(BaseModel):
-    founders: List[Founder] = Field(description="List of founders")
+Self-hosted only has `playwright` and `fetch`. Tests gated on `!process.env.TEST_SUITE_SELF_HOSTED` require fire-engine and will fail on this cluster — skip them.
 
-result = app.agent(
-    prompt="Find the founders of Firecrawl",
-    schema=FoundersSchema
-)
+---
 
-print(result.data)
-```
-```json
-{
-  "founders": [
-    {"name": "Eric Ciarla", "role": "Co-founder"},
-    {"name": "Nicolas Camara", "role": "Co-founder"},
-    {"name": "Caleb Peffer", "role": "Co-founder"}
-  ]
-}
-```
+## Running Tests Locally
 
-#### Agent with URLs (Optional)
-
-Focus the agent on specific pages:
-```python
-result = app.agent(
-    urls=["https://docs.firecrawl.dev", "https://firecrawl.dev/pricing"],
-    prompt="Compare the features and pricing information"
-)
-```
-
-#### Model Selection
-
-Choose between two models based on your needs:
-
-| Model | Cost | Best For |
-|-------|------|----------|
-| `spark-1-mini` (default) | 60% cheaper | Most tasks |
-| `spark-1-pro` | Standard | Complex research, critical extraction |
-```python
-result = app.agent(
-    prompt="Compare enterprise features across Firecrawl, Apify, and ScrapingBee",
-    model="spark-1-pro"
-)
-```
-
-**When to use Pro:**
-- Comparing data across multiple websites
-- Extracting from sites with complex navigation or auth
-- Research tasks where the agent needs to explore multiple paths
-- Critical data where accuracy is paramount
-
-Learn more about Spark models in our [Agent documentation](https://docs.firecrawl.dev/features/agent).
-
-### Crawl
-
-Crawl an entire website and get content from all pages.
 ```bash
-curl -X POST 'https://api.firecrawl.dev/v2/crawl' \
-  -H 'Authorization: Bearer fc-YOUR_API_KEY' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "url": "https://docs.firecrawl.dev",
-    "limit": 100,
-    "scrapeOptions": {
-      "formats": ["markdown"]
-    }
-  }'
+# Start the full stack (API + workers + dependencies)
+pnpm harness jest <test-file-pattern>
+
+# Do NOT run pnpm start manually — harness manages startup
 ```
 
-Returns a job ID:
-```json
-{
-  "success": true,
-  "id": "123-456-789",
-  "url": "https://api.firecrawl.dev/v2/crawl/123-456-789"
-}
-```
+Test gating:
+- `!process.env.TEST_SUITE_SELF_HOSTED` — requires fire-engine, skip on self-hosted
+- `process.env.OPENAI_API_KEY || process.env.OLLAMA_BASE_URL` — AI tests, need a key
 
-#### Check Crawl Status
+---
+
+## Running Locally with Docker Compose
+
 ```bash
-curl -X GET 'https://api.firecrawl.dev/v2/crawl/123-456-789' \
-  -H 'Authorization: Bearer fc-YOUR_API_KEY'
-```
-```json
-{
-  "status": "completed",
-  "total": 50,
-  "completed": 50,
-  "creditsUsed": 50,
-  "data": [
-    {
-      "markdown": "# Page Title\n\nContent...",
-      "metadata": {"title": "Page Title", "sourceURL": "https://..."}
-    }
-  ]
-}
-```
+# Copy and fill in env vars
+cp .env.example .env
 
-**Note:** The [SDKs](#sdks) handle polling automatically for a better developer experience.
+# Start everything
+docker compose up
 
-### Map
-
-Discover all URLs on a website instantly.
-```bash
-curl -X POST 'https://api.firecrawl.dev/v2/map' \
-  -H 'Authorization: Bearer fc-YOUR_API_KEY' \
-  -H 'Content-Type: application/json' \
-  -d '{"url": "https://firecrawl.dev"}'
-```
-
-Response:
-```json
-{
-  "success": true,
-  "links": [
-    {"url": "https://firecrawl.dev", "title": "Firecrawl", "description": "Turn websites into LLM-ready data"},
-    {"url": "https://firecrawl.dev/pricing", "title": "Pricing", "description": "Firecrawl pricing plans"},
-    {"url": "https://firecrawl.dev/blog", "title": "Blog", "description": "Firecrawl blog"}
-  ]
-}
-```
-
-#### Map with Search
-
-Find specific URLs within a site:
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-result = app.map("https://firecrawl.dev", search="pricing")
-# Returns URLs ordered by relevance to "pricing"
-```
-
-### Batch Scrape
-
-Scrape multiple URLs at once:
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-job = app.batch_scrape([
-    "https://firecrawl.dev",
-    "https://docs.firecrawl.dev",
-    "https://firecrawl.dev/pricing"
-], formats=["markdown"])
-
-for doc in job.data:
-    print(doc.metadata.source_url)
+# API available at http://localhost:3002
 ```
 
 ---
 
-## SDKs
+## Fork Diff vs Upstream
 
-Our SDKs provide a convenient way to interact with all Firecrawl features and automatically handle polling for async operations like crawling and batch scraping.
-
-### Python
-
-Install the SDK:
-```bash
-pip install firecrawl-py
-```
-```python
-from firecrawl import Firecrawl
-
-app = Firecrawl(api_key="fc-YOUR_API_KEY")
-
-# Scrape a single URL
-doc = app.scrape("https://firecrawl.dev", formats=["markdown"])
-print(doc.markdown)
-
-# Use the Agent for autonomous data gathering
-result = app.agent(prompt="Find the founders of Stripe")
-print(result.data)
-
-# Crawl a website (automatically waits for completion)
-docs = app.crawl("https://docs.firecrawl.dev", limit=50)
-for doc in docs.data:
-    print(doc.metadata.source_url, doc.markdown[:100])
-
-# Search the web
-results = app.search("best web scraping tools 2024", limit=10)
-print(results)
-```
-
-### Node.js
-
-Install the SDK:
-```bash
-npm install @mendable/firecrawl-js
-```
-```javascript
-import Firecrawl from '@mendable/firecrawl-js';
-
-const app = new Firecrawl({ apiKey: 'fc-YOUR_API_KEY' });
-
-// Scrape a single URL
-const doc = await app.scrape('https://firecrawl.dev', { formats: ['markdown'] });
-console.log(doc.markdown);
-
-// Use the Agent for autonomous data gathering
-const result = await app.agent({ prompt: 'Find the founders of Stripe' });
-console.log(result.data);
-
-// Crawl a website (automatically waits for completion)
-const docs = await app.crawl('https://docs.firecrawl.dev', { limit: 50 });
-docs.data.forEach(doc => {
-    console.log(doc.metadata.sourceURL, doc.markdown.substring(0, 100));
-});
-
-// Search the web
-const results = await app.search('best web scraping tools 2024', { limit: 10 });
-results.data.web.forEach(result => {
-    console.log(`${result.title}: ${result.url}`);
-});
-```
-
-### Java
-
-Add the dependency ([Gradle/Maven](https://docs.firecrawl.dev/sdks/java#installation)):
-```groovy
-repositories {
-    mavenCentral()
-    maven { url 'https://jitpack.io' }
-}
-
-dependencies {
-    implementation 'com.github.firecrawl:firecrawl-java-sdk:2.0'
-}
-```
-```java
-import dev.firecrawl.client.FirecrawlClient;
-import dev.firecrawl.model.*;
-
-FirecrawlClient client = new FirecrawlClient(
-    System.getenv("FIRECRAWL_API_KEY"), null, null
-);
-
-// Scrape a single URL
-ScrapeParams scrapeParams = new ScrapeParams();
-scrapeParams.setFormats(new String[]{"markdown"});
-FirecrawlDocument doc = client.scrapeURL("https://firecrawl.dev", scrapeParams);
-System.out.println(doc.getMarkdown());
-
-// Use the Agent for autonomous data gathering
-AgentParams agentParams = new AgentParams("Find the founders of Stripe");
-AgentResponse start = client.createAgent(agentParams);
-AgentStatusResponse result = client.getAgentStatus(start.getId());
-System.out.println(result.getData());
-
-// Crawl a website (polls until completion)
-CrawlParams crawlParams = new CrawlParams();
-crawlParams.setLimit(50);
-CrawlStatusResponse job = client.crawlURL("https://docs.firecrawl.dev", crawlParams, null, 10);
-for (FirecrawlDocument page : job.getData()) {
-    System.out.println(page.getMetadata().get("sourceURL"));
-}
-
-// Search the web
-SearchParams searchParams = new SearchParams("best web scraping tools 2024");
-searchParams.setLimit(10);
-SearchResponse results = client.search(searchParams);
-for (SearchResult r : results.getResults()) {
-    System.out.println(r.getTitle() + ": " + r.getUrl());
-}
-```
-
-### Elixir
-
-Add the dependency:
-```elixir
-def deps do
-  [
-    {:firecrawl, "~> 1.0"}
-  ]
-end
-```
-```elixir
-# Scrape a URL
-{:ok, response} = Firecrawl.scrape_and_extract_from_url(
-  url: "https://firecrawl.dev",
-  formats: ["markdown"]
-)
-
-# Crawl a website
-{:ok, response} = Firecrawl.crawl_urls(
-  url: "https://docs.firecrawl.dev",
-  limit: 50
-)
-
-# Search the web
-{:ok, response} = Firecrawl.search_and_scrape(
-  query: "best web scraping tools 2024",
-  limit: 10
-)
-
-# Map URLs
-{:ok, response} = Firecrawl.map_urls(url: "https://example.com")
-```
-
-### Community SDKs
-
-- [Go SDK](https://github.com/mendableai/firecrawl-go)
-- [Rust SDK](https://docs.firecrawl.dev/sdks/rust)
+| File | Change |
+|------|--------|
+| `apps/playwright-service-ts/api.ts` | Added `screenshot` / `screenshot_full_page` params, returns base64 JPEG |
+| `apps/playwright-service-ts/` (engine files) | Passes screenshot params, maps response, sets `features.screenshot = true` |
+| `apps/api/src/controllers/v2/types.ts` | Fixed `fromV1ScrapeOptions` to handle plain `"screenshot"` format string |
 
 ---
 
-## Integrations
+## Related
 
-**Agents & AI Tools**
-- [Firecrawl Skill](https://docs.firecrawl.dev/sdks/cli)
-- [Firecrawl MCP](https://github.com/mendableai/firecrawl-mcp-server)
-
-**Platforms**
-- [Lovable](https://docs.lovable.dev/integrations/firecrawl)
-- [Zapier](https://zapier.com/apps/firecrawl/integrations)
-- [n8n](https://n8n.io/integrations/firecrawl/)
-
-[View all integrations →](https://www.firecrawl.dev/integrations)
-
-**Missing your favorite tool?** [Open an issue](https://github.com/mendableai/firecrawl/issues) and let us know!
-
----
-
-## Resources
-
-- [Documentation](https://docs.firecrawl.dev)
-- [API Reference](https://docs.firecrawl.dev/api-reference/introduction)
-- [Playground](https://firecrawl.dev/playground)
-- [Changelog](https://firecrawl.dev/changelog)
-
----
-
-## Open Source vs Cloud
-
-Firecrawl is open source under the AGPL-3.0 license. The cloud version at [firecrawl.dev](https://firecrawl.dev) includes additional features:
-
-![Open Source vs Cloud](https://raw.githubusercontent.com/firecrawl/firecrawl/main/img/open-source-cloud.png)
-
-To run locally, see the [Contributing Guide](https://github.com/firecrawl/firecrawl/blob/main/CONTRIBUTING.md). To self-host, see [Self-Hosting Guide](https://docs.firecrawl.dev/contributing/self-host).
-
----
-
-## Contributing
-
-We love contributions! Please read our [Contributing Guide](https://github.com/firecrawl/firecrawl/blob/main/CONTRIBUTING.md) before submitting a pull request.
-
-### Contributors
-
-<a href="https://github.com/firecrawl/firecrawl/graphs/contributors">
-  <img alt="contributors" src="https://contrib.rocks/image?repo=firecrawl/firecrawl"/>
-</a>
-
----
-
-## License
-
-This project is primarily licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). The SDKs and some UI components are licensed under the MIT License. See the LICENSE files in specific directories for details.
-
----
-
-**It is the sole responsibility of end users to respect websites' policies when scraping.** Users are advised to adhere to applicable privacy policies and terms of use. By default, Firecrawl respects robots.txt directives. By using Firecrawl, you agree to comply with these conditions.
-
-<p align="right" style="font-size: 14px; color: #555; margin-top: 20px;">
-  <a href="#readme-top" style="text-decoration: none; color: #007bff; font-weight: bold;">
-    ↑ Back to Top ↑
-  </a>
-</p>
+| Resource | Path |
+|----------|------|
+| MCP server (custom tools) | `../firecrawl-mcp-server/` |
+| Kubernetes manifests | `../k8s/` |
+| Deployment scripts | `../scripts/` |
+| OpenClaw agent workspaces | `../openclaw/` |
+| Upstream repo | https://github.com/mendable-ai/firecrawl |
+| Upstream docs | https://docs.firecrawl.dev |
