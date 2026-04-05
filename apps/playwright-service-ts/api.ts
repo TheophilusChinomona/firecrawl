@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
-import { chromium, Browser, BrowserContext, Route, Request as PlaywrightRequest, Page } from 'playwright';
+import { chromium as vanillaChromium, Browser, BrowserContext, Route, Request as PlaywrightRequest, Page } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import dotenv from 'dotenv';
 import UserAgent from 'user-agents';
 import { getError } from './helpers/get_error';
@@ -7,6 +9,13 @@ import { lookup } from 'dns/promises';
 import IPAddr from 'ipaddr.js';
 
 dotenv.config();
+
+const ENABLE_STEALTH = (process.env.ENABLE_STEALTH || 'true').toUpperCase() !== 'FALSE';
+
+if (ENABLE_STEALTH) {
+  chromium.use(StealthPlugin());
+  console.log('Stealth plugin enabled');
+}
 
 const app = express();
 const port = process.env.PORT || 3003;
@@ -185,7 +194,8 @@ interface UrlModel {
 let browser: Browser;
 
 const initializeBrowser = async () => {
-  browser = await chromium.launch({
+  const launcher = ENABLE_STEALTH ? chromium : vanillaChromium;
+  browser = await launcher.launch({
     headless: true,
     args: [
       '--no-sandbox',
