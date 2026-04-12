@@ -76,9 +76,13 @@ services:
       retries: 3
       start_period: 30s
     cpus: 2
-    mem_limit: 4G
-    memswap_limit: 4G
+    mem_limit: 2G
+    memswap_limit: 2G
     labels:
+      - traefik.http.routers.firecrawl-core-gse2st-23-web.rule=Host(`crawl.theochinomona.tech`)
+      - traefik.http.routers.firecrawl-core-gse2st-23-web.entrypoints=web
+      - traefik.http.services.firecrawl-core-gse2st-23-web.loadbalancer.server.port=3002
+      - traefik.http.routers.firecrawl-core-gse2st-23-web.service=firecrawl-core-gse2st-23-web
       - traefik.docker.network=dokploy-network
       - traefik.http.routers.firecrawl-core-gse2st-23-web.rule=Host(`crawl.theochinomona.tech`)
       - traefik.http.routers.firecrawl-core-gse2st-23-web.entrypoints=web
@@ -147,7 +151,11 @@ services:
     image: rabbitmq:3-management
     networks:
       - backend
+    environment:
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK_ABSOLUTE: 350MB
     command: rabbitmq-server
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test:
         - CMD
