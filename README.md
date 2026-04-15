@@ -80,9 +80,38 @@ Key variables for the API (set in Dokploy / compose):
 | `DATABASE_URL` / Postgres vars | Yes | Per compose template |
 | `PORT` | No | Defaults to 3002 |
 
+### Throughput and RAM tuning (self-hosted)
+
+If you need lower RAM usage on smaller hosts, tune these down:
+
+| Variable | Effect |
+|----------|--------|
+| `NUM_WORKERS_PER_QUEUE` | Queue worker fan-out in API container |
+| `MAX_CONCURRENT_JOBS` | Max concurrent scrape jobs |
+| `CRAWL_CONCURRENT_REQUESTS` | Crawl parallelism |
+| `BROWSER_POOL_SIZE` | Browser instances kept in pool |
+| `NUQ_WORKER_COUNT` | Number of NUQ workers spawned by API |
+
+Example low-RAM profile:
+
+```env
+NUM_WORKERS_PER_QUEUE=1
+MAX_CONCURRENT_JOBS=1
+CRAWL_CONCURRENT_REQUESTS=2
+BROWSER_POOL_SIZE=1
+NUQ_WORKER_COUNT=1
+```
+
+`docker-compose.dokploy.yaml` now forwards `NUQ_WORKER_COUNT` into container env.
+
 ---
 
 ## Known quirks
+
+### Healthchecks in minimal images
+
+Some images do not include `curl` by default. Prefer Node-based health probes in compose healthchecks to avoid false `unhealthy` status caused by missing `curl`.
+
 
 ### `PLAYWRIGHT_MICROSERVICE_URL`
 
