@@ -46,31 +46,44 @@ export async function search({
       return results;
     }
     if (config.SEARXNG_ENDPOINT) {
-      logger.info("Using searxng search");
-      const results = await searxng_search(query, {
-        num_results,
-        tbs,
-        filter,
-        lang,
-        country,
-        location,
-      });
-      if (results.length > 0) return results;
+      try {
+        logger.info("Using searxng search");
+        const results = await searxng_search(query, {
+          num_results,
+          tbs,
+          filter,
+          lang,
+          country,
+          location,
+        });
+        if (results.length > 0) return results;
+      } catch (error: any) {
+        logger.warn("SearxNG search failed, falling back to DuckDuckGo", {
+          error: error?.message || String(error),
+        });
+      }
     }
     logger.info("Using DuckDuckGo search");
-    const ddg = await ddgSearch(query, num_results, {
-      tbs,
-      lang,
-      country,
-      proxy,
-      timeout,
-    });
-    return (
-      ddg.web?.map(
-        result =>
-          new SearchResult(result.url, result.title, result.description),
-      ) || []
-    );
+    try {
+      const ddg = await ddgSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        proxy,
+        timeout,
+      });
+      return (
+        ddg.web?.map(
+          result =>
+            new SearchResult(result.url, result.title, result.description),
+        ) || []
+      );
+    } catch (error: any) {
+      logger.warn("DuckDuckGo search failed", {
+        error: error?.message || String(error),
+      });
+      return [];
+    }
   } catch (error) {
     logger.error(`Error in search function`, { error });
     return [];

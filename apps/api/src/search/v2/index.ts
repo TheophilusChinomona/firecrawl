@@ -54,27 +54,39 @@ export async function search({
     }
 
     if (config.SEARXNG_ENDPOINT) {
-      logger.info("Using searxng search");
-      const results = await searxng_search(query, {
-        num_results,
-        tbs,
-        filter,
-        lang,
-        country,
-        location,
-      });
-      if (results.web && results.web.length > 0) return results;
+      try {
+        logger.info("Using searxng search");
+        const results = await searxng_search(query, {
+          num_results,
+          tbs,
+          filter,
+          lang,
+          country,
+          location,
+        });
+        if (results.web && results.web.length > 0) return results;
+      } catch (error: any) {
+        logger.warn("SearxNG search failed, falling back to DuckDuckGo", {
+          error: error?.message || String(error),
+        });
+      }
     }
 
     logger.info("Using DuckDuckGo search");
-    const ddgResults = await ddgSearch(query, num_results, {
-      tbs,
-      lang,
-      country,
-      proxy,
-      timeout,
-    });
-    if (ddgResults.web && ddgResults.web.length > 0) return ddgResults;
+    try {
+      const ddgResults = await ddgSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        proxy,
+        timeout,
+      });
+      if (ddgResults.web && ddgResults.web.length > 0) return ddgResults;
+    } catch (error: any) {
+      logger.warn("DuckDuckGo search failed", {
+        error: error?.message || String(error),
+      });
+    }
 
     // Fallback to empty response
     return {};
