@@ -65,6 +65,11 @@ import {
   scrapeInteractController,
   scrapeStopInteractiveBrowserController,
 } from "../controllers/v2/scrape-browser";
+import {
+  fireEngineScrapeController,
+  fireEngineStatusController,
+  fireEngineDeleteController,
+} from "../controllers/engine/scrape";
 
 expressWs(express());
 
@@ -484,22 +489,39 @@ v2Router.post(
 v2Router.post("/agent-signup/confirm", wrap(agentSignupConfirmController));
 v2Router.post("/agent-signup/block", wrap(agentSignupBlockController));
 
-// Only register x402 routes if X402_PAY_TO_ADDRESS is configured
-if (isX402Enabled()) {
-  v2Router.post(
-    "/x402/search",
-    authMiddleware(RateLimiterMode.Search),
-    countryCheck,
-    blocklistMiddleware,
-    paymentMiddleware(
-      createX402RouteConfig(
-        "POST /x402/search",
-        "The search endpoint combines web search (SERP) with Firecrawl's scraping capabilities to return full page content for any query. Requires micropayment via X402 protocol",
-        {},
-        {},
+  // Only register x402 routes if X402_PAY_TO_ADDRESS is configured
+  if (isX402Enabled()) {
+    v2Router.post(
+      "/x402/search",
+      authMiddleware(RateLimiterMode.Search),
+      countryCheck,
+      blocklistMiddleware,
+      paymentMiddleware(
+        createX402RouteConfig(
+          "POST /x402/search",
+          "The search endpoint combines web search (SERP) with Firecrawl's scraping capabilities to return full page content for any query. Requires micropayment via X402 protocol",
+          {},
+          {},
+        ),
+        getX402ResourceServer(),
       ),
-      getX402ResourceServer(),
-    ),
-    wrap(x402SearchController),
+      wrap(x402SearchController),
+    );
+  }
+
+  // Engine compatibility routes (for self-hosted fire-engine replacement)
+  v2Router.post(
+    "/engine/scrape",
+    // No auth for compatibility
+    wrap(fireEngineScrapeController),
   );
-}
+
+  v2Router.get(
+    "/engine/scrape/:jobId",
+    wrap(fireEngineStatusController),
+  );
+
+  v2Router.delete(
+    "/engine/scrape/:jobId",
+    wrap(fireEngineDeleteController),
+  );
