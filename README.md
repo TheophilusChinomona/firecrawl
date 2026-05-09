@@ -126,12 +126,27 @@ Optional:
 - MCP: `https://$MCP_HOST/mcp` (after Cloudflare Access login)
 - Dashboard: `https://$DASHBOARD_HOST` (after Cloudflare Access login; email must be in `OPERATOR_EMAILS`)
 
-### Sibling-service images (one-time setup)
+### How the images get built
 
-The three services that build from sibling repos (`firecrawl-mcp`, `fire-enrich-web`, `cf-access-verifier`) need their images published to your GHCR before the install works. Two paths:
+This is a monorepo. Both upstream sibling projects (`fire-enrich`, `firecrawl-mcp-server`) live as `git subtree` directories at the repo root:
 
-- **Manual:** clone the sibling repos as siblings to this one and run `./deploy/build-sidecar-images.sh` from the repo root. Requires `docker login ghcr.io`.
-- **CI in the sibling repos:** copy `deploy/sibling-workflows/fire-enrich-deploy.yml` to `TheophilusChinomona/fire-enrich/.github/workflows/` and `deploy/sibling-workflows/firecrawl-mcp-server-deploy.yml` to `TheophilusChinomona/firecrawl-mcp-server/.github/workflows/`. Push to `release` in those repos, images publish, Watchtower picks them up.
+```
+firecrawl/
+├── apps/                       # upstream firecrawl
+├── fire-enrich/                # subtree
+└── firecrawl-mcp-server/       # subtree
+```
+
+All eight images (`firecrawl`, `playwright-service`, `nuq-postgres`, `go-html-to-md-service`, `firecrawl-redis`, `cf-access-verifier`, `fire-enrich-web`, `firecrawl-mcp`) are built and pushed to your GHCR by workflows in `.github/workflows/deploy-*.{yml,yaml}` — every one runs as the repo via `secrets.GITHUB_TOKEN`, so packages auto-attach to this repo and inherit its public visibility on first push. No manual UI flips, no separate sibling-repo CI to maintain.
+
+To pull updates from each upstream into the subtrees:
+
+```bash
+git subtree pull --squash --prefix=fire-enrich \
+  https://github.com/firecrawl/fire-enrich.git main
+git subtree pull --squash --prefix=firecrawl-mcp-server \
+  https://github.com/firecrawl/firecrawl-mcp-server.git main
+```
 
 ### Updates
 
