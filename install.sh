@@ -100,21 +100,36 @@ if ! docker pull ghcr.io/theophiluschinomona/firecrawl:latest &>/dev/null; then
   ask "Press enter once you've logged in, or Ctrl-C to abort... " >/dev/null
 fi
 
-# 4b. Ensure the external `traefik` network exists. The compose file marks it
+# 4b. Ensure the external `traefik` network exists, and offer to bootstrap a
+# Traefik instance if none is running. The compose file marks the network
 # `external: true` because in production we expect a separately-managed
-# Traefik instance to own it. If no Traefik is running yet, the network
-# doesn't exist and `docker compose up` fails with:
+# Traefik to own it; without one, `docker compose up` fails with:
 #   network traefik declared as external, but could not be found
-# Create an empty network so compose can attach the labeled services to it.
-# Public traffic still won't route until a Traefik instance joins this
-# network — see the closing message of this script for that next step.
 TRAEFIK_NET="${TRAEFIK_NETWORK:-traefik}"
+TRAEFIK_RUNNING=0
+if docker ps --filter ancestor=traefik:v3 --format '{{.Names}}' 2>/dev/null | grep -q .; then
+  TRAEFIK_RUNNING=1
+elif docker ps --filter ancestor=traefik --format '{{.Names}}' 2>/dev/null | grep -q .; then
+  TRAEFIK_RUNNING=1
+fi
+
+if [ "$TRAEFIK_RUNNING" = "0" ]; then
+  echo
+  warn "No Traefik instance is running. Public traffic to your hostnames"
+  warn "won't route until one is provisioned (LetsEncrypt certs, :80/:443)."
+  TRAEFIK_REPLY=$(ask "Bootstrap a minimal Traefik now via setup-traefik.sh? [Y/n]: " "Y")
+  if [[ ! "$TRAEFIK_REPLY" =~ ^[Nn] ]]; then
+    bold "Running setup-traefik.sh"
+    curl -fsSL "${RAW_BASE}/deploy/setup-traefik.sh" | bash
+    TRAEFIK_RUNNING=1
+  fi
+fi
+
+# Make sure the network exists either way (if user opted out, services still
+# need something to attach to).
 if ! docker network inspect "$TRAEFIK_NET" &>/dev/null; then
-  bold "Creating external '$TRAEFIK_NET' network (no Traefik attached yet)"
+  bold "Creating external '$TRAEFIK_NET' network"
   docker network create "$TRAEFIK_NET" >/dev/null
-  TRAEFIK_BOOTSTRAPPED=1
-else
-  TRAEFIK_BOOTSTRAPPED=0
 fi
 
 # 5. Pull all images and roll the stack. `up -d` is naturally idempotent —
@@ -175,16 +190,11 @@ cat <<EOF
   Stack is up on the internal Docker network.
 EOF
 
-if [ "${TRAEFIK_BOOTSTRAPPED:-0}" = "1" ]; then
-  cat <<'EOF'
-  ⚠  No Traefik instance is on the 'traefik' network yet, so public traffic
-     to your hostnames will not route. Run a Traefik that:
-       - exposes :80 + :443 to the internet
-       - has a `cloudflare` cert resolver (DNS-01 challenge with
-         CF_DNS_API_TOKEN)
-       - joins the external `traefik` Docker network
-     Minimal config example:
-       https://github.com/TheophilusChinomona/firecrawl#traefik
+if [ "${TRAEFIK_RUNNING:-0}" = "0" ]; then
+  cat <<EOF
+  ⚠  No Traefik is running on the '$TRAEFIK_NET' network yet — public
+     traffic to your hostnames won't route. To bootstrap one later:
+       curl -fsSL ${RAW_BASE}/deploy/setup-traefik.sh | bash
 
 EOF
 fi
