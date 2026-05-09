@@ -3,7 +3,7 @@ name: Deploy Go Service to GHCR
 on:
   push:
     branches:
-      - main
+      - release
     paths:
       - apps/go-html-to-md-service/**
       - .github/workflows/deploy-go-service.yaml

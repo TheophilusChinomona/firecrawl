@@ -3,7 +3,7 @@ name: Deploy Playwright Image to GHCR
 on:
   push:
     branches:
-      - main
+      - release
     paths:
       - apps/playwright-service-ts/**
       - .github/workflows/deploy-playwright.yml

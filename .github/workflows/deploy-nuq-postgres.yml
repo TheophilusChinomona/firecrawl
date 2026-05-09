@@ -3,9 +3,10 @@ name: Deploy NuQ Postgres to GHCR
 on:
   push:
     branches:
-      - main
+      - release
     paths:
       - apps/nuq-postgres/**
+      - .github/workflows/deploy-nuq-postgres.yml
   workflow_dispatch:
 
 jobs:
