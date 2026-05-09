@@ -1,0 +1,384 @@
+# Instincts generated from https://github.com/TheophilusChinomona/firecrawl
+# Generated: 2026-05-09T19:45:59.294Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: firecrawl-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Commit Length
+
+## Action
+
+Write moderate-length commit messages (~74 characters)
+
+## Evidence
+
+- Average commit message length: 74 chars
+- Based on 3 commits
+
+---
+id: firecrawl-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Naming Files
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: PascalCase
+
+---
+id: firecrawl-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: firecrawl-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: firecrawl-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: firecrawl-workflow-full-feature-revert-workflow
+trigger: "when doing full feature revert workflow"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Workflow Full Feature Revert Workflow
+
+## Action
+
+Follow the full-feature-revert-workflow workflow:
+1. Implement a large feature, often touching many files across controllers, tests, docs, and generated files.
+2. Commit the changes.
+3. Immediately create a revert commit that touches the exact same set of files, restoring them to their previous state.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: .kilo/plans/*.md, MIGRATION.md, README.md
+
+---
+id: firecrawl-instinct-file-naming
+trigger: "When creating a new file in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct File Naming
+
+## Action
+
+Name the file using PascalCase (e.g., MyFile.ts)
+
+## Evidence
+
+- Pattern in namingConventions.files: PascalCase
+
+---
+id: firecrawl-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Function Naming
+
+## Action
+
+Name the function using camelCase (e.g., myFunction)
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: firecrawl-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase (e.g., MyClass)
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: firecrawl-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MY_CONSTANT)
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: firecrawl-instinct-import-style
+trigger: "When importing modules within the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: firecrawl-instinct-export-style
+trigger: "When exporting functions, classes, or constants"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: firecrawl-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Test Location
+
+## Action
+
+Place test files in mixed locations, often under __tests__ directories within feature folders
+
+## Evidence
+
+- testLocation: mixed
+- Pattern in apps/api/src/__tests__/**/*.ts
+
+---
+id: firecrawl-instinct-test-language
+trigger: "When writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Test Language
+
+## Action
+
+Write tests in TypeScript
+
+## Evidence
+
+- codeStyle.language: TypeScript
+- Pattern in apps/api/src/__tests__/**/*.ts
+
+---
+id: firecrawl-instinct-commit-prefix
+trigger: "When writing a commit message for a new feature"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Commit Prefix
+
+## Action
+
+Prefix the commit message with 'feat:'
+
+## Evidence
+
+- Pattern in commit prefixes: feat
+- Example: 'feat: implement enhanced self-hosted agent API with breaking changes'
+
+---
+id: firecrawl-instinct-revert-commit
+trigger: "When reverting a previous commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Revert Commit
+
+## Action
+
+Prefix the commit message with 'Revert "[original commit message]"'
+
+## Evidence
+
+- Example: 'Revert "feat: implement enhanced self-hosted agent API with breaking changes"'
+
+---
+id: firecrawl-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 74 characters on average
+
+## Evidence
+
+- averageLength: 74
+
+---
+id: firecrawl-instinct-full-feature-revert-workflow
+trigger: "When a major feature is merged and then needs to be rolled back"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Full Feature Revert Workflow
+
+## Action
+
+Immediately create a revert commit that touches the same set of files as the feature commit, restoring them to their previous state
+
+## Evidence
+
+- Workflow: full-feature-revert-workflow
+- Example: 'feat: implement enhanced self-hosted agent API with breaking changes' followed by 'Revert "feat: implement enhanced self-hosted agent API with breaking changes"'
+- Files: .kilo/plans/*.md, MIGRATION.md, README.md, apps/api/src/__tests__/**/*.ts, apps/api/src/controllers/**/*.ts, apps/api/src/routes/**/*.ts, graphify-out/**/*
+
+---
+id: firecrawl-instinct-error-handling
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheophilusChinomona/firecrawl
+---
+
+# Firecrawl Instinct Error Handling
+
+## Action
+
+Use try-catch blocks for error handling; do not use custom error classes or global handlers
+
+## Evidence
+
+- errorHandling.style: try-catch
+- customErrorClasses: false
+- globalHandler: false
+
