@@ -14,7 +14,6 @@ jobs:
     name: Build and Test
     runs-on: self-hosted
     env:
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
     if: >-
@@ -26,6 +25,11 @@ jobs:
 
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
+        env:
+          # runner.temp is only valid at step-level, not job-level env.
+          # Redirect setup-dotnet away from /usr/share/dotnet which the
+          # self-hosted runner user can't write to.
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         with:
           dotnet-version: "8.0.x"
 
