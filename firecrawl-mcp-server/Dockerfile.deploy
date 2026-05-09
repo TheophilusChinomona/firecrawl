@@ -10,7 +10,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
 # --- 1) Install + build fire-enrich packages/core (and its workspace deps).
 WORKDIR /workspace/fire-enrich
-COPY fire-enrich/pnpm-lock.yaml fire-enrich/pnpm-workspace.yaml fire-enrich/package.json ./
+COPY fire-enrich/pnpm-lock.yaml fire-enrich/pnpm-workspace.yaml fire-enrich/package.json fire-enrich/tsconfig.base.json ./
 COPY fire-enrich/apps/web/package.json apps/web/package.json
 COPY fire-enrich/packages/core/package.json packages/core/package.json
 COPY fire-enrich/packages/db/package.json packages/db/package.json

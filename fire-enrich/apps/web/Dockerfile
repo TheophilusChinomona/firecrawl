@@ -8,8 +8,8 @@ FROM node:22-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 WORKDIR /repo
 
-# Manifests only first, for cacheable installs.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# Manifests + root tsconfig (per-package tsconfig extends ../../tsconfig.base.json).
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/db/package.json packages/db/package.json
