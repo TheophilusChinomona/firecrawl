@@ -51,11 +51,21 @@ if ! command -v curl &>/dev/null; then
 fi
 
 # 2. Install dir
-bold "Install directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# 3. Download config files (don't clobber an existing .env)
+# Detect whether this is a fresh install or a re-run / update.
+IS_UPDATE=0
+if [ -f docker-compose.yaml ] && [ -f .env ]; then
+  IS_UPDATE=1
+  bold "Existing install detected at $INSTALL_DIR — running in update mode"
+else
+  bold "Install directory: $INSTALL_DIR"
+fi
+
+# 3. Refresh config files. Always overwrite docker-compose.yaml + .env.example
+#    so users get bug fixes from the release branch. Never overwrite .env
+#    (it has the user's secrets).
 bold "Downloading config from $REPO@$BRANCH"
 curl -fsSL "$COMPOSE_URL" -o docker-compose.yaml
 curl -fsSL "$ENV_URL" -o .env.example
@@ -77,6 +87,8 @@ if [ ! -f .env ]; then
 
 EOF
   ask "Press enter once .env is filled in, or Ctrl-C to abort... " >/dev/null
+else
+  info "  ✓ .env preserved (your existing secrets are untouched)"
 fi
 
 # 4. GHCR auth check (try a public pull to see if we need login)
@@ -88,34 +100,51 @@ if ! docker pull ghcr.io/theophiluschinomona/firecrawl:latest &>/dev/null; then
   ask "Press enter once you've logged in, or Ctrl-C to abort... " >/dev/null
 fi
 
-# 5. Pull all images
+# 5. Pull all images and roll the stack. `up -d` is naturally idempotent —
+#    services with new images are recreated, services already on :latest are
+#    left alone. Same script run on a fresh box installs; same script run on
+#    an existing box updates.
 bold "Pulling images"
 docker compose pull
 
-# 6. Bring up
-bold "Starting services"
-docker compose up -d
+if [ "$IS_UPDATE" -eq 1 ]; then
+  bold "Updating services (recreating any with new images)"
+else
+  bold "Starting services"
+fi
+docker compose up -d --remove-orphans
 
-# 7. Watchtower (optional)
+# 6. Watchtower — only set up if not already running. Check by container name
+#    AND by image, in case the user named theirs differently.
 echo
-WT_REPLY=$(ask "Install Watchtower for auto-updates from GHCR? [Y/n]: " "Y")
-if [[ ! "$WT_REPLY" =~ ^[Nn] ]]; then
-  docker rm -f watchtower 2>/dev/null || true
-  CONFIG_MOUNT=()
-  if [ -f "$HOME/.docker/config.json" ]; then
-    CONFIG_MOUNT=(-v "$HOME/.docker/config.json:/config.json:ro")
+WATCHTOWER_RUNNING=0
+if docker ps --filter "name=^watchtower$" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q '^watchtower$'; then
+  WATCHTOWER_RUNNING=1
+elif docker ps --filter "ancestor=containrrr/watchtower" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+  WATCHTOWER_RUNNING=1
+fi
+
+if [ "$WATCHTOWER_RUNNING" -eq 1 ]; then
+  info "  ✓ Watchtower already running — leaving it alone"
+else
+  WT_REPLY=$(ask "Install Watchtower for auto-updates from GHCR? [Y/n]: " "Y")
+  if [[ ! "$WT_REPLY" =~ ^[Nn] ]]; then
+    CONFIG_MOUNT=()
+    if [ -f "$HOME/.docker/config.json" ]; then
+      CONFIG_MOUNT=(-v "$HOME/.docker/config.json:/config.json:ro")
+    fi
+    docker run -d \
+      --name watchtower \
+      --restart unless-stopped \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      "${CONFIG_MOUNT[@]}" \
+      -e WATCHTOWER_POLL_INTERVAL=120 \
+      -e WATCHTOWER_CLEANUP=true \
+      -e WATCHTOWER_LABEL_ENABLE=true \
+      -e WATCHTOWER_INCLUDE_RESTARTING=true \
+      containrrr/watchtower
+    info "  ✓ Watchtower polling GHCR every 120s, restarting labeled containers when :latest advances"
   fi
-  docker run -d \
-    --name watchtower \
-    --restart unless-stopped \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    "${CONFIG_MOUNT[@]}" \
-    -e WATCHTOWER_POLL_INTERVAL=120 \
-    -e WATCHTOWER_CLEANUP=true \
-    -e WATCHTOWER_LABEL_ENABLE=true \
-    -e WATCHTOWER_INCLUDE_RESTARTING=true \
-    containrrr/watchtower
-  info "  ✓ Watchtower polling GHCR every 120s, restarting labeled containers when :latest advances"
 fi
 
 echo
