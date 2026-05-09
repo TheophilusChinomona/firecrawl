@@ -100,6 +100,23 @@ if ! docker pull ghcr.io/theophiluschinomona/firecrawl:latest &>/dev/null; then
   ask "Press enter once you've logged in, or Ctrl-C to abort... " >/dev/null
 fi
 
+# 4b. Ensure the external `traefik` network exists. The compose file marks it
+# `external: true` because in production we expect a separately-managed
+# Traefik instance to own it. If no Traefik is running yet, the network
+# doesn't exist and `docker compose up` fails with:
+#   network traefik declared as external, but could not be found
+# Create an empty network so compose can attach the labeled services to it.
+# Public traffic still won't route until a Traefik instance joins this
+# network — see the closing message of this script for that next step.
+TRAEFIK_NET="${TRAEFIK_NETWORK:-traefik}"
+if ! docker network inspect "$TRAEFIK_NET" &>/dev/null; then
+  bold "Creating external '$TRAEFIK_NET' network (no Traefik attached yet)"
+  docker network create "$TRAEFIK_NET" >/dev/null
+  TRAEFIK_BOOTSTRAPPED=1
+else
+  TRAEFIK_BOOTSTRAPPED=0
+fi
+
 # 5. Pull all images and roll the stack. `up -d` is naturally idempotent —
 #    services with new images are recreated, services already on :latest are
 #    left alone. Same script run on a fresh box installs; same script run on
@@ -155,6 +172,24 @@ echo
 bold "Done"
 cat <<EOF
 
+  Stack is up on the internal Docker network.
+EOF
+
+if [ "${TRAEFIK_BOOTSTRAPPED:-0}" = "1" ]; then
+  cat <<'EOF'
+  ⚠  No Traefik instance is on the 'traefik' network yet, so public traffic
+     to your hostnames will not route. Run a Traefik that:
+       - exposes :80 + :443 to the internet
+       - has a `cloudflare` cert resolver (DNS-01 challenge with
+         CF_DNS_API_TOKEN)
+       - joins the external `traefik` Docker network
+     Minimal config example:
+       https://github.com/TheophilusChinomona/firecrawl#traefik
+
+EOF
+fi
+
+cat <<EOF
   Next steps:
     1. Configure DNS to point your hostnames at this server's Traefik:
          \$DASHBOARD_HOST -> dashboard
