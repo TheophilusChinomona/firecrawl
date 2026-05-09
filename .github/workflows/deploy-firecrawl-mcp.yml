@@ -1,16 +1,18 @@
-# Drop this into .github/workflows/deploy.yml of the
-# TheophilusChinomona/firecrawl-mcp-server repo. It builds and pushes
-# the firecrawl-mcp image to your GHCR on every push to the `release` branch.
-#
-# Once CI is wired up here, you can stop running
-# firecrawl/deploy/build-sidecar-images.sh manually for this image.
-
 name: Deploy firecrawl-mcp Image to GHCR
+
+# This image's Dockerfile.deploy COPYs from both firecrawl-mcp-server/
+# and fire-enrich/packages/{db,core}/, so the build context is the repo
+# root and the path filter watches both subtrees.
 
 on:
   push:
     branches:
       - release
+    paths:
+      - firecrawl-mcp-server/**
+      - fire-enrich/packages/db/**
+      - fire-enrich/packages/core/**
+      - .github/workflows/deploy-firecrawl-mcp.yml
   workflow_dispatch:
 
 jobs:
@@ -34,11 +36,11 @@ jobs:
         env:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
 
-      - name: Build and push firecrawl-mcp
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.deploy
+          file: ./firecrawl-mcp-server/Dockerfile.deploy
           push: true
           tags: ghcr.io/${{ env.REPO_OWNER }}/firecrawl-mcp:latest
           provenance: false
