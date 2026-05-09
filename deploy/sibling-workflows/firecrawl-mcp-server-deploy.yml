@@ -1,23 +1,23 @@
-name: Deploy Go Service to GHCR
+# Drop this into .github/workflows/deploy.yml of the
+# TheophilusChinomona/firecrawl-mcp-server repo. It builds and pushes
+# the firecrawl-mcp image to your GHCR on every push to the `release` branch.
+#
+# Once CI is wired up here, you can stop running
+# firecrawl/deploy/build-sidecar-images.sh manually for this image.
+
+name: Deploy firecrawl-mcp Image to GHCR
 
 on:
   push:
     branches:
       - release
-    paths:
-      - apps/go-html-to-md-service/**
-      - .github/workflows/deploy-go-service.yaml
   workflow_dispatch:
 
 jobs:
-  push-app-image:
+  build:
     runs-on: self-hosted
-    defaults:
-      run:
-        working-directory: "./apps/go-html-to-md-service"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -34,10 +34,11 @@ jobs:
         env:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
 
-      - name: Build and push
+      - name: Build and push firecrawl-mcp
         uses: docker/build-push-action@v6
         with:
-          context: ./apps/go-html-to-md-service
+          context: .
+          file: ./Dockerfile.deploy
           push: true
-          tags: ghcr.io/${{ env.REPO_OWNER }}/go-html-to-md-service:latest
+          tags: ghcr.io/${{ env.REPO_OWNER }}/firecrawl-mcp:latest
           provenance: false

@@ -41,6 +41,7 @@ type ScrapeJobSingleUrlsUnique = {
   crawl_id?: string;
   sitemapped?: boolean;
   webhook?: z.infer<typeof webhookSchema>;
+  notifyOnCompletion?: boolean;
   v1?: boolean;
   integration?: string | null;
 
@@ -71,6 +72,7 @@ type ScrapeJobKickoffUnique = {
   integration?: string | null;
   crawl_id: string;
   webhook?: z.infer<typeof webhookSchema>;
+  notifyOnCompletion?: boolean;
   v1: boolean;
   apiKeyId: number | null;
 };
@@ -86,6 +88,7 @@ type ScrapeJobKickoffSitemapUnique = {
   origin: string;
   integration?: string | null;
   webhook?: z.infer<typeof webhookSchema>;
+  notifyOnCompletion?: boolean;
   v1: boolean;
   apiKeyId: number | null;
 };
