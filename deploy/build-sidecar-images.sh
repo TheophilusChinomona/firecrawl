@@ -33,21 +33,31 @@ if ! docker info 2>/dev/null | grep -q "Username: "; then
   bold "You may need to: docker login $REGISTRY"
 fi
 
+# Each image carries an org.opencontainers.image.source label pointing at
+# its origin GitHub repo. GHCR uses that label to attach the package to
+# the named repo, which lets it inherit the repo's public visibility on
+# first push (otherwise local docker push lands the package as private,
+# detached from any repo).
 build_and_push() {
-  local name="$1" context="$2" dockerfile="${3:-}"
+  local name="$1" context="$2" source_repo="$3" dockerfile="${4:-}"
   local tag="$REGISTRY/$OWNER/$name:latest"
-  bold "Building $tag"
+  local source_url="https://github.com/$OWNER/$source_repo"
+  bold "Building $tag (source=$source_url)"
   if [ -n "$dockerfile" ]; then
-    docker build -f "$dockerfile" -t "$tag" "$context"
+    docker build \
+      --label "org.opencontainers.image.source=$source_url" \
+      -f "$dockerfile" -t "$tag" "$context"
   else
-    docker build -t "$tag" "$context"
+    docker build \
+      --label "org.opencontainers.image.source=$source_url" \
+      -t "$tag" "$context"
   fi
   bold "Pushing $tag"
   docker push "$tag"
 }
 
-build_and_push cf-access-verifier "$PARENT/fire-enrich/services/cf-access-verifier"
-build_and_push fire-enrich-web    "$PARENT/fire-enrich"                       "$PARENT/fire-enrich/apps/web/Dockerfile"
-build_and_push firecrawl-mcp      "$PARENT"                                    "$PARENT/firecrawl-mcp-server/Dockerfile.deploy"
+build_and_push cf-access-verifier "$PARENT/fire-enrich/services/cf-access-verifier" fire-enrich
+build_and_push fire-enrich-web    "$PARENT/fire-enrich"                              fire-enrich              "$PARENT/fire-enrich/apps/web/Dockerfile"
+build_and_push firecrawl-mcp      "$PARENT"                                          firecrawl-mcp-server     "$PARENT/firecrawl-mcp-server/Dockerfile.deploy"
 
 bold "All three sidecar images built and pushed."
