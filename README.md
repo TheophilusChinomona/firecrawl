@@ -85,54 +85,61 @@ The compose file pulls build contexts from `../fire-enrich/` and `../firecrawl-m
 
 ## Quick start (self-host)
 
-### 1. Sibling repos
+### One-liner install
 
-The compose file references build contexts up one level:
-
-```
-parent/
-├── firecrawl/                ← this repo
-├── fire-enrich/              ← required for fire-enrich-web + cf-access-verifier
-└── firecrawl-mcp-server/     ← required for firecrawl-mcp
-```
-
-Clone all three as siblings before bringing the stack up.
-
-### 2. Environment
-
-Copy and fill in the env contract:
+On the production server:
 
 ```bash
-cp .env.example .env
+curl -fsSL https://raw.githubusercontent.com/TheophilusChinomona/firecrawl/release/install.sh | bash
 ```
 
-Required at minimum:
+That installer (`install.sh` at the repo root):
 
-- `CF_ACCESS_TEAM`, `CF_ACCESS_AUD_DASHBOARD`, `CF_ACCESS_AUD_MCP` — from Cloudflare Zero Trust → Access → Applications. The team value is the subdomain before `.cloudflareaccess.com`.
-- `OPERATOR_EMAILS` — comma-separated allowlist for the dashboard.
-- `KEY_ENCRYPTION_KEY`, `SERVER_PEPPER`, `ADMIN_COOKIE_SECRET` — `openssl rand -base64 32` each. **Rotating any of these invalidates every existing principal token and admin cookie.**
-- `LLM_API_KEY` — used by the MCP server's enrich + research tools (OpenRouter by default; override `LLM_BASE_URL` for OpenAI direct).
-- `POSTGRES_PASSWORD`, `BULL_AUTH_KEY` — the queue password + Bull-Board admin password.
+1. Checks for `docker` + `docker compose v2`.
+2. Creates `~/firecrawl-stack/` (override with `INSTALL_DIR=/path`).
+3. Downloads `deploy/docker-compose.yaml` and `deploy/.env.example`.
+4. Drops a stub `.env` and pauses for you to fill in real values.
+5. Logs in to GHCR if needed, then `docker compose pull && up -d`.
+6. Optionally installs Watchtower (polls GHCR every 2 min, restarts containers when `:latest` advances).
+
+The compose file under `deploy/` uses **`image:` directives only** — every service pulls a pre-built image from `ghcr.io/theophiluschinomona/*`. No source-clone, no local build, no sibling repos required on the production host.
+
+### Required env vars (minimum)
+
+When the installer pauses for you to edit `.env`, fill in at least:
+
+- `CF_ACCESS_TEAM`, `CF_ACCESS_AUD_DASHBOARD`, `CF_ACCESS_AUD_MCP` — from Cloudflare Zero Trust → Access → Applications.
+- `OPERATOR_EMAILS` — comma-separated dashboard allowlist.
+- `KEY_ENCRYPTION_KEY`, `SERVER_PEPPER`, `ADMIN_COOKIE_SECRET` — `openssl rand -base64 32` each.
+- `POSTGRES_PASSWORD`, `BULL_AUTH_KEY`.
+- `OPENAI_API_KEY` (or `LLM_API_KEY` for the MCP server's enrich/research tools — OpenRouter by default).
+- `DASHBOARD_HOST`, `MCP_HOST` — your hostnames; defaults are this fork's.
 - `TRAEFIK_NETWORK` — name of the external Docker network your Traefik instance routes from. Defaults to `traefik`.
 
-Optional but recommended:
+Optional:
 
 - `NOTIFY_SLACK_WEBHOOK_URL` and/or `NOTIFY_DISCORD_WEBHOOK_URL` — to receive job-completion notifications when callers pass `notifyOnCompletion: true`.
-- `OPENAI_API_KEY` — for the upstream `extract` LLM features.
 
-### 3. Bring it up
+### Verify
 
-```bash
-docker compose up -d --build
-```
+- API: `curl https://$MCP_HOST/v2/scrape -H "Authorization: Bearer $FIRECRAWL_API_KEY" -d '{"url":"firecrawl.dev"}'`
+- MCP: `https://$MCP_HOST/mcp` (after Cloudflare Access login)
+- Dashboard: `https://$DASHBOARD_HOST` (after Cloudflare Access login; email must be in `OPERATOR_EMAILS`)
 
-The first run builds the upstream images locally (api, nuq-postgres, playwright) and the three additions from the sibling repos. Subsequent runs reuse cached layers.
+### Sibling-service images (one-time setup)
 
-### 4. Verify
+The three services that build from sibling repos (`firecrawl-mcp`, `fire-enrich-web`, `cf-access-verifier`) need their images published to your GHCR before the install works. Two paths:
 
-- API: `curl https://crawl.theochinomona.tech/v2/scrape -H "Authorization: Bearer $FIRECRAWL_API_KEY" -d '{"url":"firecrawl.dev"}'`
-- MCP: `https://crawl.theochinomona.tech/mcp` (after Cloudflare Access login)
-- Dashboard: `https://enrich.theochinomona.tech` (after Cloudflare Access login; email must be in `OPERATOR_EMAILS`)
+- **Manual:** clone the sibling repos as siblings to this one and run `./deploy/build-sidecar-images.sh` from the repo root. Requires `docker login ghcr.io`.
+- **CI in the sibling repos:** copy `deploy/sibling-workflows/fire-enrich-deploy.yml` to `TheophilusChinomona/fire-enrich/.github/workflows/` and `deploy/sibling-workflows/firecrawl-mcp-server-deploy.yml` to `TheophilusChinomona/firecrawl-mcp-server/.github/workflows/`. Push to `release` in those repos, images publish, Watchtower picks them up.
+
+### Updates
+
+Push to the `release` branch of this repo. The deploy-* workflows build the API + playwright + nuq-postgres images and push to GHCR. Watchtower on the prod server pulls + restarts the affected containers within ~2 minutes. To upgrade `install.sh` itself or the compose file, rerun the curl one-liner.
+
+### Dev mode (build locally)
+
+For local development with hot reload and on-machine builds, the original `docker-compose.yaml` at the repo root still works — it has `build:` directives and expects the sibling repos cloned alongside this one. Use it for development; use `deploy/docker-compose.yaml` for production.
 
 ---
 
