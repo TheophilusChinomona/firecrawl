@@ -11,6 +11,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 # --- 1) Install + build fire-enrich packages/core (and its workspace deps).
 WORKDIR /workspace/fire-enrich
 COPY fire-enrich/pnpm-lock.yaml fire-enrich/pnpm-workspace.yaml fire-enrich/package.json ./
+COPY fire-enrich/tsconfig.base.json ./tsconfig.base.json
 COPY fire-enrich/apps/web/package.json apps/web/package.json
 COPY fire-enrich/packages/core/package.json packages/core/package.json
 COPY fire-enrich/packages/db/package.json packages/db/package.json
@@ -43,9 +44,11 @@ COPY --from=build /workspace/firecrawl-mcp-server/dist ./dist
 COPY --from=build /workspace/firecrawl-mcp-server/package.json ./package.json
 COPY --from=build /workspace/firecrawl-mcp-server/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=build /workspace/firecrawl-mcp-server/node_modules ./node_modules
-COPY --from=build /workspace/fire-enrich/packages/core /workspace/fire-enrich/packages/core
-# pnpm's link: resolves to an absolute path via /workspace/, so we keep the
-# linked source available at the same path inside the runtime image.
+COPY --from=build /workspace/fire-enrich/node_modules /fire-enrich/node_modules
+COPY --from=build /workspace/fire-enrich/packages/db /fire-enrich/packages/db
+COPY --from=build /workspace/fire-enrich/packages/core /fire-enrich/packages/core
+# pnpm's workspace links resolve to /fire-enrich/packages/* in this runtime
+# image, so preserve both linked packages there.
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

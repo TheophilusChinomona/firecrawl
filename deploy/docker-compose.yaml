@@ -86,6 +86,9 @@ services:
 
   api:
     <<: *common-service
+    networks:
+      - backend
+      - traefik
     environment:
       <<: *common-env
       HOST: "0.0.0.0"
@@ -98,6 +101,8 @@ services:
     depends_on:
       redis:
         condition: service_started
+      searxng:
+        condition: service_started
       playwright-service:
         condition: service_started
       rabbitmq:
@@ -107,6 +112,40 @@ services:
     cpus: 4.0
     mem_limit: 8G
     memswap_limit: 8G
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-public}"
+      - "traefik.http.routers.firecrawl.rule=Host(`crawl.theochinomona.tech`)"
+      - "traefik.http.routers.firecrawl.entrypoints=web"
+      - "traefik.http.services.firecrawl.loadbalancer.server.port=${INTERNAL_PORT:-3002}"
+
+  searxng:
+    image: searxng/searxng:latest
+    networks:
+      - backend
+    volumes:
+      - /srv/stacks/infra/firecrawl/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      SEARXNG_BASE_URL: "http://searxng:8080/"
+      UWSGI_WORKERS: "2"
+      UWSGI_THREADS: "4"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    cpus: 0.5
+    mem_limit: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
 
   redis:
     image: redis:alpine
@@ -178,7 +217,9 @@ services:
         compress: "true"
 
   firecrawl-mcp:
-    image: ghcr.io/theophiluschinomona/firecrawl-mcp:latest
+    build:
+      context: ..
+      dockerfile: firecrawl-mcp-server/Dockerfile.deploy
     networks:
       - backend
       - traefik
@@ -195,7 +236,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-public}"
       - "traefik.http.routers.fc-mcp.rule=Host(`${MCP_HOST:-crawl.theochinomona.tech}`) && PathPrefix(`/mcp`)"
       - "traefik.http.routers.fc-mcp.priority=100"
       - "traefik.http.routers.fc-mcp.entrypoints=websecure"
@@ -238,7 +279,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-public}"
       - "traefik.http.routers.fe-web.rule=Host(`${DASHBOARD_HOST:-enrich.theochinomona.tech}`)"
       - "traefik.http.routers.fe-web.entrypoints=websecure"
       - "traefik.http.routers.fe-web.tls.certresolver=cloudflare"
