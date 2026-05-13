@@ -45,6 +45,7 @@ import {
   createX402RouteConfig,
   isX402Enabled,
 } from "../lib/x402";
+import { deprecationMiddleware } from "../lib/deprecations";
 import { agentController } from "../controllers/v2/agent";
 import { agentStatusController } from "../controllers/v2/agent-status";
 import { agentCancelController } from "../controllers/v2/agent-cancel";
@@ -56,6 +57,7 @@ import {
   browserWebhookDestroyedController,
 } from "../controllers/v2/browser";
 import { activityController } from "../controllers/v1/activity";
+import { supportProxyController } from "../controllers/v2/support-proxy";
 import { agentSignupController } from "../controllers/v2/agent-signup";
 import {
   agentSignupConfirmController,
@@ -70,6 +72,16 @@ import {
   fireEngineStatusController,
   fireEngineDeleteController,
 } from "../controllers/engine/scrape";
+import {
+  createMonitorController,
+  deleteMonitorController,
+  getMonitorCheckController,
+  getMonitorController,
+  listMonitorChecksController,
+  listMonitorsController,
+  runMonitorController,
+  updateMonitorController,
+} from "../controllers/v2/monitor";
 
 expressWs(express());
 
@@ -375,6 +387,7 @@ v2Router.get(
 v2Router.post(
   "/extract",
   authMiddleware(RateLimiterMode.Extract),
+  deprecationMiddleware("v2_extract"),
   countryCheck,
   checkCreditsMiddleware(20),
   blocklistMiddleware,
@@ -384,6 +397,7 @@ v2Router.post(
 v2Router.get(
   "/extract/:jobId",
   authMiddleware(RateLimiterMode.ExtractStatus),
+  deprecationMiddleware("v2_extract_status"),
   validateJobIdParam,
   wrap(extractStatusController),
 );
@@ -454,6 +468,63 @@ v2Router.get(
 );
 
 v2Router.post(
+  "/monitor",
+  authMiddleware(RateLimiterMode.Crawl),
+  countryCheck,
+  checkCreditsMiddleware(1),
+  blocklistMiddleware,
+  wrap(createMonitorController),
+);
+
+v2Router.get(
+  "/monitor",
+  authMiddleware(RateLimiterMode.CrawlStatus),
+  wrap(listMonitorsController),
+);
+
+v2Router.get(
+  "/monitor/:monitorId",
+  authMiddleware(RateLimiterMode.CrawlStatus),
+  wrap(getMonitorController),
+);
+
+v2Router.patch(
+  "/monitor/:monitorId",
+  authMiddleware(RateLimiterMode.Crawl),
+  countryCheck,
+  checkCreditsMiddleware(1),
+  blocklistMiddleware,
+  wrap(updateMonitorController),
+);
+
+v2Router.delete(
+  "/monitor/:monitorId",
+  authMiddleware(RateLimiterMode.CrawlStatus),
+  wrap(deleteMonitorController),
+);
+
+v2Router.post(
+  "/monitor/:monitorId/run",
+  authMiddleware(RateLimiterMode.Crawl),
+  countryCheck,
+  checkCreditsMiddleware(1),
+  blocklistMiddleware,
+  wrap(runMonitorController),
+);
+
+v2Router.get(
+  "/monitor/:monitorId/checks",
+  authMiddleware(RateLimiterMode.CrawlStatus),
+  wrap(listMonitorChecksController),
+);
+
+v2Router.get(
+  "/monitor/:monitorId/checks/:checkId",
+  authMiddleware(RateLimiterMode.CrawlStatus),
+  wrap(getMonitorCheckController),
+);
+
+v2Router.post(
   "/browser",
   authMiddleware(RateLimiterMode.Browser),
   countryCheck,
@@ -484,44 +555,50 @@ v2Router.post(
   wrap(browserWebhookDestroyedController),
 );
 
+// Support agent proxy — forwards to the support-agent service.
+v2Router.post(
+  "/support/ask",
+  authMiddleware(RateLimiterMode.SupportAsk),
+  wrap(supportProxyController),
+);
+v2Router.post(
+  "/support/docs-search",
+  authMiddleware(RateLimiterMode.SupportDocsSearch),
+  wrap(supportProxyController),
+);
+
 // Agent signup routes (public, no auth required — rate limiting is handled inside the controller)
 // v2Router.post("/agent-signup", wrap(agentSignupController));
 v2Router.post("/agent-signup/confirm", wrap(agentSignupConfirmController));
 v2Router.post("/agent-signup/block", wrap(agentSignupBlockController));
 
-  // Only register x402 routes if X402_PAY_TO_ADDRESS is configured
-  if (isX402Enabled()) {
-    v2Router.post(
-      "/x402/search",
-      authMiddleware(RateLimiterMode.Search),
-      countryCheck,
-      blocklistMiddleware,
-      paymentMiddleware(
-        createX402RouteConfig(
-          "POST /x402/search",
-          "The search endpoint combines web search (SERP) with Firecrawl's scraping capabilities to return full page content for any query. Requires micropayment via X402 protocol",
-          {},
-          {},
-        ),
-        getX402ResourceServer(),
-      ),
-      wrap(x402SearchController),
-    );
-  }
-
-  // Engine compatibility routes (for self-hosted fire-engine replacement)
+// Only register x402 routes if X402_PAY_TO_ADDRESS is configured
+if (isX402Enabled()) {
   v2Router.post(
-    "/engine/scrape",
-    // No auth for compatibility
-    wrap(fireEngineScrapeController),
+    "/x402/search",
+    authMiddleware(RateLimiterMode.Search),
+    countryCheck,
+    blocklistMiddleware,
+    paymentMiddleware(
+      createX402RouteConfig(
+        "POST /x402/search",
+        "The search endpoint combines web search (SERP) with Firecrawl's scraping capabilities to return full page content for any query. Requires micropayment via X402 protocol",
+        {},
+        {},
+      ),
+      getX402ResourceServer(),
+    ),
+    wrap(x402SearchController),
   );
+}
 
-  v2Router.get(
-    "/engine/scrape/:jobId",
-    wrap(fireEngineStatusController),
-  );
+// Engine compatibility routes (for self-hosted fire-engine replacement)
+v2Router.post(
+  "/engine/scrape",
+  // No auth for compatibility
+  wrap(fireEngineScrapeController),
+);
 
-  v2Router.delete(
-    "/engine/scrape/:jobId",
-    wrap(fireEngineDeleteController),
-  );
+v2Router.get("/engine/scrape/:jobId", wrap(fireEngineStatusController));
+
+v2Router.delete("/engine/scrape/:jobId", wrap(fireEngineDeleteController));
