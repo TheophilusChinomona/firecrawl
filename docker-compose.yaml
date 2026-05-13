@@ -184,7 +184,7 @@ services:
     # Traefik's forwardAuth middleware. Stays on `backend` only — never
     # exposed publicly. Two AUDs (dashboard, mcp) share one verifier.
     build:
-      context: ../fire-enrich/services/cf-access-verifier
+      context: ./fire-enrich/services/cf-access-verifier
     networks:
       - backend
     environment:
@@ -202,9 +202,9 @@ services:
     # so it shares a hostname with the API — Cloudflare Access app is scoped
     # to the /mcp subpath only.
     build:
-      # Parent context so the Dockerfile can pull in fire-enrich/packages/core
-      # as a workspace dep (we link: that across repos).
-      context: ..
+      # Repo root context so the Dockerfile can pull in fire-enrich/packages/core
+      # and firecrawl-mcp-server/ — both now in-tree as subtrees.
+      context: .
       dockerfile: firecrawl-mcp-server/Dockerfile.deploy
     networks:
       - backend
@@ -248,7 +248,7 @@ services:
     # Same nuq-postgres instance — fire-enrich tables live in the public
     # schema (apps/nuq-postgres/fire-enrich.sql, runs at initdb).
     build:
-      context: ../fire-enrich
+      context: ./fire-enrich
       dockerfile: apps/web/Dockerfile
     networks:
       - backend

@@ -68,11 +68,6 @@ import {
   scrapeStopInteractiveBrowserController,
 } from "../controllers/v2/scrape-browser";
 import {
-  fireEngineScrapeController,
-  fireEngineStatusController,
-  fireEngineDeleteController,
-} from "../controllers/engine/scrape";
-import {
   createMonitorController,
   deleteMonitorController,
   getMonitorCheckController,
@@ -591,14 +586,3 @@ if (isX402Enabled()) {
     wrap(x402SearchController),
   );
 }
-
-// Engine compatibility routes (for self-hosted fire-engine replacement)
-v2Router.post(
-  "/engine/scrape",
-  // No auth for compatibility
-  wrap(fireEngineScrapeController),
-);
-
-v2Router.get("/engine/scrape/:jobId", wrap(fireEngineStatusController));
-
-v2Router.delete("/engine/scrape/:jobId", wrap(fireEngineDeleteController));
