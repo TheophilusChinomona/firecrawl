@@ -1,4 +1,5 @@
 import { parseMarkdown } from "../../../lib/html-to-markdown";
+import { injectHtmlAttributeAnnotations } from "../../../lib/inject-html-attributes";
 import { Meta } from "..";
 import { Document } from "../../../controllers/v2/types";
 import { htmlTransform } from "../lib/removeUnwantedElements";
@@ -128,9 +129,16 @@ async function deriveMarkdownFromHTML(
     return document;
   }
 
+  // When includeHtmlAttributes is enabled, inject attribute annotations into the
+  // HTML before markdown conversion so they appear in the markdown output.
+  let htmlForMarkdown = document.html;
+  if (meta.options.includeHtmlAttributes) {
+    htmlForMarkdown = injectHtmlAttributeAnnotations(htmlForMarkdown);
+  }
+
   // Use scrape ID or crawl ID as request_id for tracing
   const requestId = meta.id || meta.internalOptions.crawlId;
-  document.markdown = await parseMarkdown(document.html, {
+  document.markdown = await parseMarkdown(htmlForMarkdown, {
     logger: meta.logger,
     requestId,
     zeroDataRetention: meta.internalOptions.zeroDataRetention,
@@ -153,7 +161,11 @@ async function deriveMarkdownFromHTML(
     };
 
     document = await deriveHTMLFromRawHTML(fallbackMeta, document);
-    document.markdown = await parseMarkdown(document.html, {
+    let fallbackHtml = document.html!;
+    if (meta.options.includeHtmlAttributes) {
+      fallbackHtml = injectHtmlAttributeAnnotations(fallbackHtml);
+    }
+    document.markdown = await parseMarkdown(fallbackHtml, {
       logger: meta.logger,
       requestId,
       zeroDataRetention: meta.internalOptions.zeroDataRetention,
