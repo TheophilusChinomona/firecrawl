@@ -78,7 +78,7 @@ function escapeAttrValue(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export interface InjectHtmlAttributeOptions {
+interface InjectHtmlAttributeOptions {
   /**
    * If provided, only these attribute names will be annotated.
    * Overrides the default meaningful-attribute detection.
