@@ -1308,6 +1308,7 @@ class SearchData(BaseModel):
     web: Optional[List[Union[SearchResultWeb, Document]]] = None
     news: Optional[List[Union[SearchResultNews, Document]]] = None
     images: Optional[List[Union[SearchResultImages, Document]]] = None
+    credits_used: Optional[int] = None
 
 
 class SearchResponse(BaseResponse[SearchData]):
