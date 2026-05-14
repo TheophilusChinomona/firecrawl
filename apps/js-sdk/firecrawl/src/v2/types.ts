@@ -535,6 +535,8 @@ export interface SearchRequest {
   ignoreInvalidURLs?: boolean;
   timeout?: number; // ms
   scrapeOptions?: ScrapeOptions;
+  country?: string;
+  enterprise?: Array<'default' | 'anon' | 'zdr'>;
   integration?: string;
   origin?: string;
 }
