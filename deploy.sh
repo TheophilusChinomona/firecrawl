@@ -47,9 +47,13 @@ else
     echo "⚠️ MCP service not accessible (may not be running)"
 fi
 
-# Clean up
-echo "🧹 Cleaning up old images..."
-docker image prune -f
+# Clean up (opt-in only to avoid removing unrelated images on shared hosts)
+if [ "${PRUNE_DOCKER_IMAGES:-false}" = "true" ]; then
+    echo "🧹 Cleaning up old dangling images..."
+    docker image prune -f
+else
+    echo "⏭️ Skipping Docker image prune. Set PRUNE_DOCKER_IMAGES=true to enable it."
+fi
 
 echo "🎉 Deployment completed successfully!"
 echo ""
