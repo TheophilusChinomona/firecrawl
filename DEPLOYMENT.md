@@ -90,6 +90,7 @@ This repo's compose file references sibling paths (`../fire-enrich` and parent c
 ```
 
 If you prefer a different layout, update the `build.context` paths in `docker-compose.yaml` to match your server paths.
+If you use the exact layout above, set `DEPLOY_PATH=/opt/firecrawl`.
 
 ### 4. Deployment Workflow
 
