@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 15 App Router, Tailwind CSS with CSS-variable color system, Lucide React (already installed), Recharts (already installed), Sonner for toasts, shadcn/ui
 
-**Repo root for all file paths:** `/home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web`
+**Repo root for all file paths:** `<repo-root>/apps/web`
 
 ---
 
@@ -501,7 +501,7 @@ export function AppSidebar() {
               T
             </div>
             <span className="min-w-0 flex-1 truncate text-[11px] text-[#555]">
-              tc3157@acextic.com
+              user@example.com
             </span>
           </div>
         )}
@@ -1325,10 +1325,10 @@ The pattern for each: Panel with URL input → options row → toolbar (Get code
 - [ ] **Step 1: Read all four current view files**
 
 ```bash
-cat /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/playground/crawl/crawl-view.tsx
-cat /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/playground/map/map-view.tsx
-cat /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/playground/extract/extract-view.tsx
-cat /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/playground/batch-scrape/batch-scrape-view.tsx
+cat app/playground/crawl/crawl-view.tsx
+cat app/playground/map/map-view.tsx
+cat app/playground/extract/extract-view.tsx
+cat app/playground/batch-scrape/batch-scrape-view.tsx
 ```
 
 - [ ] **Step 2: Restyle crawl-view.tsx**
@@ -1842,7 +1842,7 @@ export function ParseView() {
 Check if `/api/firecrawl/parse/route.ts` exists. If not, create `app/api/firecrawl/parse/route.ts`:
 
 ```bash
-ls /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/api/firecrawl/
+ls app/api/firecrawl/
 ```
 
 If the route doesn't exist, create `app/api/firecrawl/parse/route.ts`:
@@ -2075,7 +2075,7 @@ export function AgentView() {
 Check if `/api/firecrawl/agent/route.ts` exists:
 
 ```bash
-ls /home/theo/Documents/Theochinomona.tech/firecrawl/fire-enrich/apps/web/app/api/firecrawl/
+ls app/api/firecrawl/
 ```
 
 If missing, create `app/api/firecrawl/agent/route.ts`:

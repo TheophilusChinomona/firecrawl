@@ -7,7 +7,7 @@ set -e
 
 echo "🚀 Starting Firecrawl deployment..."
 
-# Check if docker-compose exists
+# Check if docker-compose.yaml exists in the current directory
 if [ ! -f "docker-compose.yaml" ]; then
     echo "❌ docker-compose.yaml not found!"
     exit 1
