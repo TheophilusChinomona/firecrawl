@@ -5,7 +5,7 @@ import {
   HAS_SEARCH,
   TEST_PRODUCTION,
 } from "../lib";
-import { search, searchWithFailure, idmux, Identity } from "./lib";
+import { search, searchRaw, searchWithFailure, idmux, Identity } from "./lib";
 import { config } from "../../../config";
 
 let identity: Identity;
@@ -307,6 +307,28 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       expect(res.web).toBeDefined();
       expect(res.web?.length).toBeGreaterThan(0);
       expect(res.web?.length).toBeLessThanOrEqual(21);
+    },
+    60000,
+  );
+
+  it.concurrent(
+    "accepts scrapeOptions.zeroDataRetention without validation error (#3441)",
+    async () => {
+      const res = await searchRaw(
+        {
+          query: "firecrawl",
+          scrapeOptions: {
+            zeroDataRetention: true,
+          },
+        } as any,
+        identity,
+      );
+      // Should not be rejected as an invalid request body (400 with Zod error).
+      // It may fail for other reasons (e.g. ZDR not enabled for test team) but
+      // it must NOT fail with "Invalid request body".
+      if (res.statusCode === 400) {
+        expect(res.body.error).not.toBe("Invalid request body");
+      }
     },
     60000,
   );
