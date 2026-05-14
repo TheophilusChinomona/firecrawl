@@ -288,20 +288,85 @@ export async function scrapeURLWithFireEngineChromeCDP(
           ]
         : []),
 
-      // Include specified actions
-      ...(meta.options.actions ?? []).map(action => {
+      // Include specified actions.
+      // When a user-provided screenshot action has fullPage: true, inject
+      // scroll actions before it so lazy-loaded content is triggered.
+      ...(meta.options.actions ?? []).flatMap(action => {
         const { metadata: _, ...rest } = action as InternalAction;
-        return rest;
+        if (
+          rest.type === "screenshot" &&
+          (rest as any).fullPage === true
+        ) {
+          return [
+            {
+              type: "scroll" as const,
+              direction: "down" as const,
+              metadata: { __firecrawl_internal: true },
+            },
+            {
+              type: "wait" as const,
+              milliseconds: 500,
+              metadata: { __firecrawl_internal: true },
+            },
+            {
+              type: "scroll" as const,
+              direction: "up" as const,
+              metadata: { __firecrawl_internal: true },
+            },
+            {
+              type: "wait" as const,
+              milliseconds: 200,
+              metadata: { __firecrawl_internal: true },
+            },
+            rest,
+          ];
+        }
+        return [rest];
       }),
 
-      // Transform screenshot format into an action (unsupported by chrome-cdp)
+      // Transform screenshot format into an action (unsupported by chrome-cdp).
+      // When fullPage is requested we first scroll to the bottom and back to
+      // trigger lazy-loaded content so the full-page capture includes it.
       ...(hasFormatOfType(meta.options.formats, "screenshot")
         ? [
+            ...(hasFormatOfType(meta.options.formats, "screenshot")?.fullPage
+              ? [
+                  {
+                    type: "scroll" as const,
+                    direction: "down" as const,
+                    metadata: { __firecrawl_internal: true },
+                  },
+                  {
+                    type: "wait" as const,
+                    milliseconds: 500,
+                    metadata: { __firecrawl_internal: true },
+                  },
+                  {
+                    type: "scroll" as const,
+                    direction: "up" as const,
+                    metadata: { __firecrawl_internal: true },
+                  },
+                  {
+                    type: "wait" as const,
+                    milliseconds: 200,
+                    metadata: { __firecrawl_internal: true },
+                  },
+                ]
+              : []),
             {
               type: "screenshot" as const,
               fullPage:
                 hasFormatOfType(meta.options.formats, "screenshot")?.fullPage ||
                 false,
+              ...(hasFormatOfType(meta.options.formats, "screenshot")?.quality !==
+              undefined
+                ? {
+                    quality: hasFormatOfType(
+                      meta.options.formats,
+                      "screenshot",
+                    )!.quality,
+                  }
+                : {}),
               ...(hasFormatOfType(meta.options.formats, "screenshot")?.viewport
                 ? {
                     viewport: hasFormatOfType(
@@ -337,9 +402,18 @@ export async function scrapeURLWithFireEngineChromeCDP(
       0,
     );
 
+    const hasScreenshotFormat = hasFormatOfType(
+      meta.options.formats,
+      "screenshot",
+    );
+    const hasScreenshotAction = (meta.options.actions ?? []).some(
+      a => a.type === "screenshot",
+    );
     const shouldAllowMedia =
       hasFormatOfType(meta.options.formats, "branding") ||
-      shouldRunYoutubePostprocessor;
+      shouldRunYoutubePostprocessor ||
+      !!hasScreenshotFormat ||
+      hasScreenshotAction;
 
     const request: FireEngineScrapeRequestCommon &
       FireEngineScrapeRequestChromeCDP = {
