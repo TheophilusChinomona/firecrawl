@@ -118,4 +118,36 @@ describe("injectHtmlAttributeAnnotations", () => {
     expect(result).not.toContain("[role=");
     expect(result).not.toContain("[data-testid=");
   });
+
+  it("should skip non-visual elements like script and style", () => {
+    const html =
+      '<script data-testid="analytics">console.log("hi")</script><div role="main">Visible</div>';
+    const result = injectHtmlAttributeAnnotations(html);
+    // The script element should NOT have an annotation
+    expect(result).not.toMatch(/\[data-testid=analytics\]/);
+    // The div should still be annotated
+    expect(result).toContain("[role=main]");
+  });
+
+  it("should skip style elements", () => {
+    const html =
+      '<style data-theme="dark">.foo { color: red; }</style><p title="intro">Text</p>';
+    const result = injectHtmlAttributeAnnotations(html);
+    expect(result).not.toContain("[data-theme=");
+    expect(result).toContain("[title=intro]");
+  });
+
+  it("should escape HTML special characters in attribute values", () => {
+    const html = '<div data-info="a<b&c>d">Content</div>';
+    const result = injectHtmlAttributeAnnotations(html);
+    // The < > & should be escaped so they don't break HTML
+    expect(result).toContain("[data-info=a&lt;b&amp;c&gt;d]");
+    expect(result).toContain("Content");
+  });
+
+  it("should not annotate firecrawl-internal data-original-tag attribute", () => {
+    const html = '<span data-original-tag="h1">Title</span>';
+    const result = injectHtmlAttributeAnnotations(html);
+    expect(result).not.toContain("[data-original-tag=");
+  });
 });

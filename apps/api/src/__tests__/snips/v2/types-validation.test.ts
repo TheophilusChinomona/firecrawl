@@ -1279,6 +1279,18 @@ describe("V2 Types Validation", () => {
         "Total wait time (waitFor + wait actions) cannot exceed",
       );
     });
+
+    it("should accept includeHtmlAttributes: true (#3512)", () => {
+      const result = scrapeOptions.parse({
+        includeHtmlAttributes: true,
+      });
+      expect(result.includeHtmlAttributes).toBe(true);
+    });
+
+    it("should default includeHtmlAttributes to false (#3512)", () => {
+      const result = scrapeOptions.parse({});
+      expect(result.includeHtmlAttributes).toBe(false);
+    });
   });
 
   describe("monitor schedules", () => {

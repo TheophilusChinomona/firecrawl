@@ -1,140 +1,49 @@
 import { load } from "cheerio";
 
 /**
- * Attributes that are always excluded from annotation because they are noise
- * or already handled by markdown conversion (e.g. href -> links, src -> images).
+ * data-* attributes managed internally by firecrawl that should never be
+ * surfaced as annotations.
  */
-const EXCLUDED_ATTRIBUTES = new Set([
-  "class",
+const EXCLUDED_DATA_ATTRIBUTES = new Set(["data-original-tag"]);
+
+/**
+ * Non-visual elements whose attributes should never be annotated because
+ * they do not produce visible content in the markdown output.
+ */
+const NON_VISUAL_ELEMENTS = new Set([
+  "script",
   "style",
-  "id",
-  "href",
-  "src",
-  "srcset",
-  "alt", // alt text is already rendered by markdown img syntax
-  "width",
-  "height",
-  "colspan",
-  "rowspan",
-  "type", // too noisy on input/script/link elements
-  "rel",
-  "target",
-  "charset",
-  "name", // meta name, input name - too noisy
-  "content", // meta content - too noisy
-  "http-equiv",
-  "action",
-  "method",
-  "enctype",
-  "value", // form values - could be sensitive
-  "placeholder",
-  "for",
-  "tabindex",
-  "autocomplete",
-  "autofocus",
-  "disabled",
-  "readonly",
-  "required",
-  "checked",
-  "selected",
-  "multiple",
-  "maxlength",
-  "minlength",
-  "pattern",
-  "min",
-  "max",
-  "step",
-  "hidden",
-  "loading",
-  "decoding",
-  "crossorigin",
-  "integrity",
-  "referrerpolicy",
-  "sandbox",
-  "allow",
-  "allowfullscreen",
-  "frameborder",
-  "scrolling",
-  "marginwidth",
-  "marginheight",
-  "xmlns",
-  "lang",
-  "dir",
-  "translate",
-  "spellcheck",
-  "contenteditable",
-  "draggable",
-  "contextmenu",
-  "accesskey",
-  "itemprop",
-  "itemscope",
-  "itemtype",
-  "itemid",
-  "itemref",
-  "property",
-  "about",
-  "datatype",
-  "inlist",
-  "prefix",
-  "resource",
-  "typeof",
-  "vocab",
-  "nonce",
-  "slot",
-  "is",
-  "part",
-  "exportparts",
-  "elementtiming",
-  "fetchpriority",
-  "blocking",
-  "importance",
-  "sizes",
-  "media",
-  "ping",
-  "download",
-  "hreflang",
-  "referrer",
-  "scope",
-  "headers",
-  "abbr",
-  "axis",
-  "bgcolor",
-  "border",
-  "cellpadding",
-  "cellspacing",
-  "rules",
-  "summary",
-  "valign",
-  "align",
-  "nowrap",
-  "face",
-  "color",
-  "size",
-  "compact",
-  "noshade",
-  "start",
-  "reversed",
-  "coords",
-  "shape",
-  "usemap",
-  "ismap",
-  "longdesc",
-  "vspace",
-  "hspace",
-  "alink",
+  "noscript",
+  "template",
+  "head",
   "link",
-  "text",
-  "vlink",
-  "background",
-  "topmargin",
-  "leftmargin",
-  "rightmargin",
-  "bottommargin",
-  "data-original-tag", // firecrawl internal attribute
+  "meta",
 ]);
 
 /**
- * Attribute name patterns that are always meaningful and should be included.
+ * Void / self-closing elements that cannot have child text nodes.
+ * Hoisted to module scope to avoid re-creating on every iteration.
+ */
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/**
+ * Returns `true` when the attribute carries meaningful semantic information
+ * that is useful for searchability (whitelist approach).
  */
 function isMeaningfulAttribute(attrName: string): boolean {
   const lower = attrName.toLowerCase();
@@ -149,12 +58,24 @@ function isMeaningfulAttribute(attrName: string): boolean {
     return true;
   }
 
-  // Include all data-* attributes (except excluded ones)
-  if (lower.startsWith("data-") && !EXCLUDED_ATTRIBUTES.has(lower)) {
+  // Include all data-* attributes except firecrawl-internal ones
+  if (lower.startsWith("data-") && !EXCLUDED_DATA_ATTRIBUTES.has(lower)) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Escape characters in attribute values that could break HTML structure
+ * or markdown formatting when injected as visible text.
+ */
+function escapeAttrValue(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export interface InjectHtmlAttributeOptions {
@@ -186,6 +107,9 @@ export function injectHtmlAttributeAnnotations(
   $("*").each((_, el) => {
     if (el.type !== "tag") return;
 
+    // Skip non-visual elements entirely
+    if (NON_VISUAL_ELEMENTS.has(el.tagName.toLowerCase())) return;
+
     const attribs = el.attribs;
     if (!attribs) return;
 
@@ -199,32 +123,15 @@ export function injectHtmlAttributeAnnotations(
         : isMeaningfulAttribute(attrName);
 
       if (shouldInclude) {
-        annotations.push(` [${attrName}=${attrValue}]`);
+        annotations.push(` [${attrName}=${escapeAttrValue(attrValue)}]`);
       }
     }
 
     if (annotations.length > 0) {
       const $el = $(el);
-      // For void/self-closing elements (input, img, br, etc.), wrap with a span
-      // so the annotation appears in the text flow
-      const voidElements = new Set([
-        "area",
-        "base",
-        "br",
-        "col",
-        "embed",
-        "hr",
-        "img",
-        "input",
-        "link",
-        "meta",
-        "param",
-        "source",
-        "track",
-        "wbr",
-      ]);
 
-      if (voidElements.has(el.tagName.toLowerCase())) {
+      if (VOID_ELEMENTS.has(el.tagName.toLowerCase())) {
+        // For void/self-closing elements place annotation after the element
         $el.after(annotations.join(""));
       } else {
         $el.append(annotations.join(""));
