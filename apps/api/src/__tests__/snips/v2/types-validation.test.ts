@@ -1249,6 +1249,26 @@ describe("V2 Types Validation", () => {
       expect(typeof result.query).toBe("string");
       expect(typeof result.limit).toBe("number");
     });
+
+    it("should accept scrapeOptions.zeroDataRetention (#3441)", () => {
+      const result = searchRequestSchema.parse({
+        query: "test",
+        scrapeOptions: {
+          zeroDataRetention: true,
+        },
+      });
+      expect((result.scrapeOptions as any)?.zeroDataRetention).toBe(true);
+    });
+
+    it("should accept scrapeOptions.zeroDataRetention false (#3441)", () => {
+      const result = searchRequestSchema.parse({
+        query: "test",
+        scrapeOptions: {
+          zeroDataRetention: false,
+        },
+      });
+      expect((result.scrapeOptions as any)?.zeroDataRetention).toBe(false);
+    });
   });
 
   describe("scrapeOptions schema", () => {
