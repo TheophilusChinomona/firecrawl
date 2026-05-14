@@ -517,6 +517,18 @@ export interface SearchData {
   images?: Array<SearchResultImages | Document>;
 }
 
+/**
+ * Full response envelope from the /v2/search API.
+ * Includes metadata fields (id, creditsUsed, warning) that `search()` strips.
+ * Use `searchWithMetadata()` to obtain this shape.
+ */
+export interface SearchResponse {
+  data: SearchData;
+  id?: string;
+  creditsUsed?: number;
+  warning?: string | null;
+}
+
 export interface CategoryOption {
   type: 'github' | 'research' | 'pdf';
 }
