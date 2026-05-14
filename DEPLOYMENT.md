@@ -85,7 +85,7 @@ This repo's compose file references sibling paths (`../fire-enrich` and parent c
 ```text
 /opt
 ├── firecrawl                # this repository (DEPLOY_PATH)
-├── fire-enrich              # sibling repo required by fire-enrich-web + cf-access-verifier builds
+├── fire-enrich              # sibling repo required by fire-enrich-web + cf-access-verifier Docker service builds
 └── firecrawl-mcp-server     # included from parent build context for firecrawl-mcp image
 ```
 

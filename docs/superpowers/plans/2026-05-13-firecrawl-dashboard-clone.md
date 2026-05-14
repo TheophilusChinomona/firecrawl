@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 15 App Router, Tailwind CSS with CSS-variable color system, Lucide React (already installed), Recharts (already installed), Sonner for toasts, shadcn/ui
 
-**Repo root for all file paths:** `${REPO_ROOT}/apps/web`
+**Repo root for all file paths:** `<repo-root>/apps/web` (replace `<repo-root>` with your local clone path)
 
 ---
 
