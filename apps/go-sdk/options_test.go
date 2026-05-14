@@ -106,8 +106,153 @@ func TestScrapeOptionsSerializesProfileNameOnly(t *testing.T) {
 	}
 
 	jsonBody := string(payload)
-	// saveChanges should be omitted when nil
 	if !strings.Contains(jsonBody, `"profile":{"name":"session-1"}`) {
 		t.Fatalf("serialized profile = %s, want profile with name only", jsonBody)
+	}
+}
+
+func TestScrapeOptionsJsonFormatWithJsonOptions(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"title": map[string]interface{}{"type": "string"},
+		},
+	}
+	payload, err := json.Marshal(ScrapeOptions{
+		Formats: []string{"markdown", "json"},
+		JsonOptions: &JsonOptions{
+			Prompt: "Extract the title",
+			Schema: schema,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+
+	if strings.Contains(jsonBody, `"jsonOptions"`) {
+		t.Fatalf("serialized body should NOT contain jsonOptions as a separate field: %s", jsonBody)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("Unmarshal result: %v", err)
+	}
+
+	formats, ok := result["formats"].([]interface{})
+	if !ok {
+		t.Fatalf("formats is not an array: %v", result["formats"])
+	}
+
+	if len(formats) != 2 {
+		t.Fatalf("expected 2 formats, got %d: %v", len(formats), formats)
+	}
+
+	foundMarkdown := false
+	foundJsonObj := false
+	for _, f := range formats {
+		switch v := f.(type) {
+		case string:
+			if v == "markdown" {
+				foundMarkdown = true
+			}
+		case map[string]interface{}:
+			if v["type"] == "json" {
+				foundJsonObj = true
+				if v["prompt"] != "Extract the title" {
+					t.Errorf("json format prompt = %v, want %q", v["prompt"], "Extract the title")
+				}
+				if v["schema"] == nil {
+					t.Errorf("json format schema is nil")
+				}
+			}
+		}
+	}
+
+	if !foundMarkdown {
+		t.Errorf("formats array missing plain string 'markdown': %s", jsonBody)
+	}
+	if !foundJsonObj {
+		t.Errorf("formats array missing json format object with type/schema/prompt: %s", jsonBody)
+	}
+}
+
+func TestScrapeOptionsJsonFormatWithoutJsonOptions(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		Formats: []string{"json"},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	if !strings.Contains(string(payload), `"formats":["json"]`) {
+		t.Fatalf("serialized string formats = %s, want plain string 'json'", payload)
+	}
+}
+
+func TestScrapeOptionsJsonFormatViaFormatOptions(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		FormatOptions: []interface{}{
+			"markdown",
+			JsonFormat{
+				Prompt: "Extract data",
+				Schema: map[string]interface{}{"type": "object"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+	if !strings.Contains(jsonBody, `"type":"json"`) {
+		t.Fatalf("serialized formats missing json type: %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, `"prompt":"Extract data"`) {
+		t.Fatalf("serialized formats missing prompt: %s", jsonBody)
+	}
+}
+
+func TestParseOptionsJsonFormatWithJsonOptions(t *testing.T) {
+	schema := map[string]interface{}{"type": "object"}
+	payload, err := json.Marshal(ParseOptions{
+		Formats: []string{"json"},
+		JsonOptions: &JsonOptions{
+			Prompt: "Extract data",
+			Schema: schema,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ParseOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+
+	if strings.Contains(jsonBody, `"jsonOptions"`) {
+		t.Fatalf("serialized body should NOT contain jsonOptions as a separate field: %s", jsonBody)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("Unmarshal result: %v", err)
+	}
+
+	formats, ok := result["formats"].([]interface{})
+	if !ok {
+		t.Fatalf("formats is not an array: %v", result["formats"])
+	}
+
+	found := false
+	for _, f := range formats {
+		if obj, ok := f.(map[string]interface{}); ok && obj["type"] == "json" {
+			found = true
+			if obj["prompt"] != "Extract data" {
+				t.Errorf("json format prompt = %v", obj["prompt"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("formats array missing json format object: %s", jsonBody)
 	}
 }
