@@ -90,6 +90,7 @@ type ScrapeOptions struct {
 	MaxAge              *int64                   `json:"maxAge,omitempty"`
 	StoreInCache        *bool                    `json:"storeInCache,omitempty"`
 	Lockdown            *bool                    `json:"lockdown,omitempty"`
+	Profile             *ProfileConfig           `json:"profile,omitempty"`
 	Integration         *string                  `json:"integration,omitempty"`
 	JsonOptions         *JsonOptions             `json:"jsonOptions,omitempty"`
 }
@@ -190,6 +191,13 @@ type AgentOptions struct {
 type LocationConfig struct {
 	Country   string   `json:"country,omitempty"`
 	Languages []string `json:"languages,omitempty"`
+}
+
+// ProfileConfig configures a browser profile for persistent state
+// (cookies, localStorage, etc.) across scrapes.
+type ProfileConfig struct {
+	Name        string `json:"name"`
+	SaveChanges *bool  `json:"saveChanges,omitempty"`
 }
 
 // WebhookConfig configures webhook notifications.

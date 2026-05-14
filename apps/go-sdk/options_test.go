@@ -63,3 +63,51 @@ func TestScrapeOptionsPreservesStringFormats(t *testing.T) {
 		t.Fatalf("serialized string formats = %s", payload)
 	}
 }
+
+func TestScrapeOptionsSerializesProfileConfig(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		Profile: &ProfileConfig{
+			Name:        "my-profile",
+			SaveChanges: Bool(true),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+	if !strings.Contains(jsonBody, `"profile":{"name":"my-profile","saveChanges":true}`) {
+		t.Fatalf("serialized profile = %s, want to contain profile config", jsonBody)
+	}
+}
+
+func TestScrapeOptionsOmitsProfileWhenNil(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		Formats: []string{"markdown"},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+	if strings.Contains(jsonBody, `"profile"`) {
+		t.Fatalf("serialized options should omit nil profile, got %s", jsonBody)
+	}
+}
+
+func TestScrapeOptionsSerializesProfileNameOnly(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		Profile: &ProfileConfig{
+			Name: "session-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+
+	jsonBody := string(payload)
+	// saveChanges should be omitted when nil
+	if !strings.Contains(jsonBody, `"profile":{"name":"session-1"}`) {
+		t.Fatalf("serialized profile = %s, want profile with name only", jsonBody)
+	}
+}
