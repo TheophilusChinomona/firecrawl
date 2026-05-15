@@ -587,6 +587,7 @@ const baseScrapeOptions = z.strictObject({
   location: locationSchema,
 
   skipTlsVerification: z.boolean().optional(),
+  includeHtmlAttributes: z.boolean().prefault(false),
   removeBase64Images: z.boolean().prefault(true),
   fastMode: z.boolean().prefault(false),
   useMock: z.string().optional(),
