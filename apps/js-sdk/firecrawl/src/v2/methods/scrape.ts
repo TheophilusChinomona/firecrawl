@@ -34,7 +34,7 @@ export async function scrape(
       "/v2/scrape",
       payload,
       typeof options?.timeout === "number"
-        ? { timeoutMs: options.timeout + 5000 }
+        ? { timeoutMs: options.timeout * 1000 + 5000 }
         : {},
     );
     if (res.status !== 200 || !res.data?.success) {
