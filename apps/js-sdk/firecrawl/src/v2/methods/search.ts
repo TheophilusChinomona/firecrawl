@@ -14,7 +14,7 @@ import {
   normalizeAxiosError,
 } from "../utils/errorHandler";
 
-function prepareSearchPayload(req: SearchRequest): Record<string, unknown> {
+export function prepareSearchPayload(req: SearchRequest): Record<string, unknown> {
   if (!req.query || !req.query.trim()) throw new Error("Query cannot be empty");
   if (req.limit != null && req.limit <= 0)
     throw new Error("limit must be positive");
@@ -37,6 +37,8 @@ function prepareSearchPayload(req: SearchRequest): Record<string, unknown> {
   if (req.ignoreInvalidURLs != null)
     payload.ignoreInvalidURLs = req.ignoreInvalidURLs;
   if (req.timeout != null) payload.timeout = req.timeout;
+  if (req.country != null) payload.country = req.country;
+  if (req.enterprise != null) payload.enterprise = req.enterprise;
   if (req.integration && req.integration.trim())
     payload.integration = req.integration.trim();
   if (req.origin) payload.origin = req.origin;
