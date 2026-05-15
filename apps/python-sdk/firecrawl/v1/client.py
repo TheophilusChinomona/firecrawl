@@ -4015,13 +4015,12 @@ class AsyncV1FirecrawlApp(V1FirecrawlApp):
             headers
         )
 
-        if response.get('status_code') == 200:
-            try:
-                return V1BatchScrapeResponse(**response.json())
-            except:
-                raise Exception(f'Failed to parse Firecrawl response as JSON.')
+        if response.get('success'):
+            return V1BatchScrapeResponse(**response)
+        elif "error" in response:
+            raise Exception(f'Failed to start batch scrape job. Error: {response["error"]}')
         else:
-            await self._handle_error(response, 'start batch scrape job')
+            raise Exception(f'Failed to start batch scrape job. Error: {response}')
 
     async def crawl_url(
         self,
