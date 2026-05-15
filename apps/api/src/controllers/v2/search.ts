@@ -86,7 +86,8 @@ export async function searchController(
 
     const isZDR = req.body.enterprise?.includes("zdr");
     const isAnon = req.body.enterprise?.includes("anon");
-    const isZDROrAnon = isZDR || isAnon;
+    const scrapeZDR = (req.body.scrapeOptions as any)?.zeroDataRetention ?? false;
+    const isZDROrAnon = isZDR || isAnon || scrapeZDR;
     zeroDataRetention = isZDROrAnon ?? false;
     applyZdrScope(isZDROrAnon ?? false);
 
