@@ -61,6 +61,7 @@ export type FireEngineScrapeRequestChromeCDP = {
   actions?: InternalAction[];
   blockMedia?: boolean;
   mobile?: boolean;
+  fullPage?: boolean;
   disableSmartWaitCache?: boolean;
   persistentStorage?: { uniqueId: string };
 };
