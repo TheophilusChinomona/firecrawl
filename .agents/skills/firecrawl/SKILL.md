@@ -9,8 +9,8 @@ This skill teaches the core development patterns and workflows found in the `fir
 ## Coding Conventions
 
 ### File Naming
-- **PascalCase** is used for file names.
-  - Example: `MyController.ts`, `UserService.ts`
+- **camelCase** or **lowercase** is used for file names.
+  - Example: `crawl.ts`, `index.ts`
 
 ### Import Style
 - **Relative imports** are preferred.
