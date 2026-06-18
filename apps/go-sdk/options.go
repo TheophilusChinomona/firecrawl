@@ -91,6 +91,7 @@ type ScrapeOptions struct {
 	StoreInCache        *bool                    `json:"storeInCache,omitempty"`
 	Lockdown            *bool                    `json:"lockdown,omitempty"`
 	Profile             *ProfileConfig           `json:"profile,omitempty"`
+	RedactPII           *bool                    `json:"redactPII,omitempty"`
 	Integration         *string                  `json:"integration,omitempty"`
 	JsonOptions         *JsonOptions             `json:"jsonOptions,omitempty"`
 }

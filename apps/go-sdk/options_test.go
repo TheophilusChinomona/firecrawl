@@ -256,3 +256,15 @@ func TestParseOptionsJsonFormatWithJsonOptions(t *testing.T) {
 		t.Errorf("formats array missing json format object: %s", jsonBody)
 	}
 }
+
+func TestScrapeOptionsSerializesRedactPII(t *testing.T) {
+	payload, err := json.Marshal(ScrapeOptions{
+		RedactPII: Bool(true),
+	})
+	if err != nil {
+		t.Fatalf("Marshal ScrapeOptions: %v", err)
+	}
+	if !strings.Contains(string(payload), `"redactPII":true`) {
+		t.Fatalf("serialized redactPII = %s", payload)
+	}
+}

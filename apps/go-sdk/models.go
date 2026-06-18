@@ -22,6 +22,168 @@ type Document struct {
 	Warning        string                   `json:"warning,omitempty"`
 	ChangeTracking map[string]interface{}   `json:"changeTracking,omitempty"`
 	Branding       map[string]interface{}   `json:"branding,omitempty"`
+	Product        *ProductProfile          `json:"product,omitempty"`
+}
+
+// ProductProfile represents structured product data extracted from a page
+// via the `product` scrape format.
+type ProductProfile struct {
+	Title         string               `json:"title"`
+	Brand         string               `json:"brand,omitempty"`
+	Category      string               `json:"category,omitempty"`
+	URL           string               `json:"url"`
+	Description   string               `json:"description,omitempty"`
+	Variants      []ProductVariant     `json:"variants,omitempty"`
+}
+
+// ProductImage is a single product image.
+type ProductImage struct {
+	URL string `json:"url"`
+	Alt string `json:"alt,omitempty"`
+}
+
+// ProductPrice represents a price for a product or variant.
+type ProductPrice struct {
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency,omitempty"`
+	Formatted string  `json:"formatted,omitempty"`
+}
+
+// ProductAvailability represents stock availability for a product or variant.
+type ProductAvailability struct {
+	InStock bool   `json:"inStock"`
+	Text    string `json:"text,omitempty"`
+}
+
+// ProductSale represents sale information for a product variant.
+type ProductSale struct {
+	OriginalPrice ProductPrice `json:"originalPrice"`
+}
+
+// ProductVariant represents a single purchasable variant of a product.
+type ProductVariant struct {
+	ID           string              `json:"id,omitempty"`
+	SKU          string              `json:"sku,omitempty"`
+	Title        string              `json:"title,omitempty"`
+	Values       map[string]any      `json:"values,omitempty"`
+	Price        *ProductPrice       `json:"price,omitempty"`
+	Sale         *ProductSale        `json:"sale,omitempty"`
+	Availability ProductAvailability `json:"availability"`
+	Images       []ProductImage      `json:"images,omitempty"`
+}
+
+// PaperResult represents a ranked research paper result.
+type PaperResult struct {
+	PaperID   string                 `json:"paperId"`
+	PrimaryID string                 `json:"primaryId,omitempty"`
+	IDs       map[string]interface{} `json:"ids,omitempty"`
+	Title     string                 `json:"title,omitempty"`
+	Abstract  string                 `json:"abstract,omitempty"`
+	Score     *float64               `json:"score,omitempty"`
+	Year      *int                   `json:"year,omitempty"`
+	Authors   []string               `json:"authors,omitempty"`
+	Venue     string                 `json:"venue,omitempty"`
+	URL       string                 `json:"url,omitempty"`
+	Signals   map[string]interface{} `json:"signals,omitempty"`
+}
+
+// PaperMetadata represents paper metadata returned by inspect/read endpoints.
+type PaperMetadata struct {
+	PaperID     string                 `json:"paperId,omitempty"`
+	IDs         map[string]interface{} `json:"ids,omitempty"`
+	Title       string                 `json:"title,omitempty"`
+	Abstract    string                 `json:"abstract,omitempty"`
+	Authors     string                 `json:"authors,omitempty"`
+	Categories  []string               `json:"categories,omitempty"`
+	CreatedDate string                 `json:"createdDate,omitempty"`
+	UpdateDate  string                 `json:"updateDate,omitempty"`
+}
+
+// Passage is a relevant paper passage.
+type Passage struct {
+	Text     string                 `json:"text,omitempty"`
+	Section  string                 `json:"section,omitempty"`
+	Page     *int                   `json:"page,omitempty"`
+	Score    *float64               `json:"score,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SearchPapersResponse is returned by SearchPapers.
+type SearchPapersResponse struct {
+	Success bool          `json:"success"`
+	Results []PaperResult `json:"results"`
+}
+
+// PaperMetadataResponse is returned by InspectPaper.
+type PaperMetadataResponse struct {
+	Success bool          `json:"success"`
+	Paper   PaperMetadata `json:"paper"`
+}
+
+// ReadPaperResponse is returned by ReadPaper.
+type ReadPaperResponse struct {
+	Success  bool          `json:"success"`
+	Paper    PaperMetadata `json:"paper"`
+	PaperID  string        `json:"paperId,omitempty"`
+	Query    string        `json:"query,omitempty"`
+	Passages []Passage     `json:"passages,omitempty"`
+}
+
+// SimilarPapersResponse is returned by RelatedPapers.
+type SimilarPapersResponse struct {
+	Success   bool          `json:"success"`
+	Results   []PaperResult `json:"results"`
+	PoolSize  *int          `json:"poolSize,omitempty"`
+	Truncated bool          `json:"truncated"`
+	Note      *string       `json:"note,omitempty"`
+}
+
+// GitHubSearchItem represents a GitHub research search result.
+type GitHubSearchItem struct {
+	ResultType   string                 `json:"resultType,omitempty"`
+	Repo         string                 `json:"repo,omitempty"`
+	URL          string                 `json:"url,omitempty"`
+	PageType     string                 `json:"pageType,omitempty"`
+	Number       *int                   `json:"number,omitempty"`
+	SegmentCount *int                   `json:"segmentCount,omitempty"`
+	ReadmeURL    string                 `json:"readmeUrl,omitempty"`
+	Title        string                 `json:"title,omitempty"`
+	Snippet      string                 `json:"snippet,omitempty"`
+	ContentMD    string                 `json:"contentMd,omitempty"`
+	Scores       map[string]interface{} `json:"scores,omitempty"`
+}
+
+// GitHubSearchResponse is returned by SearchGitHub.
+type GitHubSearchResponse struct {
+	Success bool               `json:"success"`
+	Results []GitHubSearchItem `json:"results"`
+}
+
+// Research options for search-like endpoints.
+type SearchPapersOptions struct {
+	K          *int     `json:"k,omitempty"`
+	Authors    []string `json:"authors,omitempty"`
+	Categories []string `json:"categories,omitempty"`
+	From       string   `json:"from,omitempty"`
+	To         string   `json:"to,omitempty"`
+}
+
+// ReadPaperOptions configures ReadPaper.
+type ReadPaperOptions struct {
+	K *int `json:"k,omitempty"`
+}
+
+// RelatedPapersOptions configures RelatedPapers.
+type RelatedPapersOptions struct {
+	Mode   string   `json:"mode,omitempty"`
+	K      *int     `json:"k,omitempty"`
+	Rerank *bool    `json:"rerank,omitempty"`
+	Anchor []string `json:"anchor,omitempty"`
+}
+
+// SearchGitHubOptions configures SearchGitHub.
+type SearchGitHubOptions struct {
+	K *int `json:"k,omitempty"`
 }
 
 // CrawlResponse is returned when starting an async crawl.
@@ -110,6 +272,10 @@ type MonitorSchedule struct {
 }
 
 // MonitorCreateRequest creates a scheduled monitor.
+//
+// Goal is an optional natural-language description of what the monitor is
+// watching for (max 2000 chars). When set with JudgeEnabled left nil, the
+// API auto-enables judging for this monitor.
 type MonitorCreateRequest struct {
 	Name          string                   `json:"name"`
 	Schedule      MonitorSchedule          `json:"schedule"`
@@ -117,9 +283,14 @@ type MonitorCreateRequest struct {
 	Webhook       map[string]interface{}   `json:"webhook,omitempty"`
 	Notification  map[string]interface{}   `json:"notification,omitempty"`
 	RetentionDays *int                     `json:"retentionDays,omitempty"`
+	Goal          *string                  `json:"goal,omitempty"`
+	JudgeEnabled  *bool                    `json:"judgeEnabled,omitempty"`
 }
 
 // MonitorUpdateRequest updates a scheduled monitor.
+//
+// Goal and JudgeEnabled follow the same semantics as MonitorCreateRequest;
+// leave them nil to keep the existing values.
 type MonitorUpdateRequest struct {
 	Name          string                   `json:"name,omitempty"`
 	Status        string                   `json:"status,omitempty"`
@@ -128,6 +299,8 @@ type MonitorUpdateRequest struct {
 	Webhook       map[string]interface{}   `json:"webhook,omitempty"`
 	Notification  map[string]interface{}   `json:"notification,omitempty"`
 	RetentionDays *int                     `json:"retentionDays,omitempty"`
+	Goal          *string                  `json:"goal,omitempty"`
+	JudgeEnabled  *bool                    `json:"judgeEnabled,omitempty"`
 }
 
 // Monitor represents a scheduled monitor.
@@ -145,6 +318,8 @@ type Monitor struct {
 	RetentionDays            int                      `json:"retentionDays"`
 	EstimatedCreditsPerMonth *int                     `json:"estimatedCreditsPerMonth,omitempty"`
 	LastCheckSummary         *MonitorSummary          `json:"lastCheckSummary,omitempty"`
+	Goal                     *string                  `json:"goal,omitempty"`
+	JudgeEnabled             bool                     `json:"judgeEnabled"`
 	CreatedAt                string                   `json:"createdAt,omitempty"`
 	UpdatedAt                string                   `json:"updatedAt,omitempty"`
 }
@@ -180,19 +355,74 @@ type MonitorCheck struct {
 	UpdatedAt          string         `json:"updatedAt,omitempty"`
 }
 
+// MonitorJsonFieldDiff is a single field-level diff returned for monitors
+// that requested JSON extraction. Keys are field paths in the extracted
+// JSON; values describe what changed between the previous and current run.
+type MonitorJsonFieldDiff struct {
+	Previous interface{} `json:"previous"`
+	Current  interface{} `json:"current"`
+}
+
+// MonitorPageDiff is the diff payload returned alongside a monitor page
+// when its scrape produced a change. The shape depends on what the
+// monitor's formats asked for:
+//
+//   - markdown-only monitors  → Text holds the unified diff and JSON
+//     holds the parseDiff AST (a {"files": [...]} object).
+//   - JSON-extraction monitors → JSON holds the per-field
+//     map[string]MonitorJsonFieldDiff and Text is empty.
+//   - mixed (JSON + git-diff) monitors → both fields are populated:
+//     JSON is the per-field diff and Text is the markdown sidecar.
+//
+// JSON is left as interface{} so callers can decode into either of the
+// two possible shapes; use json.Unmarshal with a concrete target when
+// the monitor's mode is known.
+type MonitorPageDiff struct {
+	Text string      `json:"text,omitempty"`
+	JSON interface{} `json:"json,omitempty"`
+}
+
+// MonitorPageSnapshot is the snapshot of the current JSON extraction at
+// this run. It is present on JSON and mixed-mode monitors and absent
+// for markdown-only monitors.
+type MonitorPageSnapshot struct {
+	JSON map[string]interface{} `json:"json,omitempty"`
+}
+
+// MonitorMeaningfulChange is a single goal-relevant change selected by the
+// monitor judge.
+type MonitorMeaningfulChange struct {
+	Type   string  `json:"type"`
+	Before *string `json:"before"`
+	After  *string `json:"after"`
+	Reason string  `json:"reason"`
+}
+
+// MonitorPageJudgment is the judge's verdict on whether a page change is
+// meaningful. Populated on monitor check pages when the monitor has a
+// goal set and judging is enabled.
+type MonitorPageJudgment struct {
+	Meaningful        bool                      `json:"meaningful"`
+	Confidence        string                    `json:"confidence"`
+	Reason            string                    `json:"reason"`
+	MeaningfulChanges []MonitorMeaningfulChange `json:"meaningfulChanges"`
+}
+
 // MonitorCheckPage is a single page result in a monitor check.
 type MonitorCheckPage struct {
-	ID               string      `json:"id"`
-	TargetID         string      `json:"targetId"`
-	URL              string      `json:"url"`
-	Status           string      `json:"status"`
-	PreviousScrapeID string      `json:"previousScrapeId,omitempty"`
-	CurrentScrapeID  string      `json:"currentScrapeId,omitempty"`
-	StatusCode       *int        `json:"statusCode,omitempty"`
-	Error            string      `json:"error,omitempty"`
-	Metadata         interface{} `json:"metadata,omitempty"`
-	Diff             interface{} `json:"diff,omitempty"`
-	CreatedAt        string      `json:"createdAt,omitempty"`
+	ID               string               `json:"id"`
+	TargetID         string               `json:"targetId"`
+	URL              string               `json:"url"`
+	Status           string               `json:"status"`
+	PreviousScrapeID string               `json:"previousScrapeId,omitempty"`
+	CurrentScrapeID  string               `json:"currentScrapeId,omitempty"`
+	StatusCode       *int                 `json:"statusCode,omitempty"`
+	Error            string               `json:"error,omitempty"`
+	Metadata         interface{}          `json:"metadata,omitempty"`
+	Diff             *MonitorPageDiff     `json:"diff,omitempty"`
+	Snapshot         *MonitorPageSnapshot `json:"snapshot,omitempty"`
+	Judgment         *MonitorPageJudgment `json:"judgment,omitempty"`
+	CreatedAt        string               `json:"createdAt,omitempty"`
 }
 
 // MonitorCheckDetail includes paginated page results and inline diffs.

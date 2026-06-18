@@ -5,30 +5,23 @@ import { getCrawl, StoredCrawl } from "./crawl-redis";
 import { logger } from "./logger";
 import { abTestJob } from "../services/ab-test";
 import { scrapeQueue, type NuQJob } from "../services/worker/nuq";
+export { QueueFullError } from "./queue-full-error";
+export {
+  getTeamQueueLimit,
+  MAX_BACKLOG_TIMEOUT_MS,
+  getConcurrencyLimitActiveJobsCount,
+  pushConcurrencyLimitActiveJob,
+  removeConcurrencyLimitActiveJob,
+} from "./concurrency-redis";
+import {
+  getTeamQueueLimit,
+  MAX_BACKLOG_TIMEOUT_MS,
+  constructConcurrencyLimitKey,
+  pushConcurrencyLimitActiveJob,
+  removeConcurrencyLimitActiveJob,
+} from "./concurrency-redis";
 
-export class QueueFullError extends Error {
-  statusCode = 429;
-  constructor(queueSize: number, queueLimit: number) {
-    super(
-      `Queue limit reached: your team has ${queueSize} jobs queued (limit: ${queueLimit}). Please wait for existing jobs to complete before adding more, or upgrade your plan for a higher limit. For more info, see https://docs.firecrawl.dev/rate-limits#concurrent-browser-limits`,
-    );
-    this.name = "QueueFullError";
-  }
-}
-
-// min 50k, max 2M, 2000 per concurrent browser
-export function getTeamQueueLimit(concurrencyLimit: number): number {
-  return Math.min(Math.max(concurrencyLimit * 2000, 50_000), 2_000_000);
-}
-
-// Upper bound for how long a job may sit in the concurrency-limit backlog.
-// This bounds both the Redis ZSET score and the Postgres `times_out_at`
-// column on `nuq.queue_scrape_backlog`, so the reaper can always evict
-// stale rows. A backlogged crawl job that outlives this window is
-// unrecoverable anyway — its StoredCrawl in Redis (24h TTL) is gone.
-export const MAX_BACKLOG_TIMEOUT_MS = 172800000; // 48h
-
-const constructKey = (team_id: string) => "concurrency-limiter:" + team_id;
+const constructKey = constructConcurrencyLimitKey;
 const constructQueueKey = (team_id: string) =>
   "concurrency-limit-queue:" + team_id;
 
@@ -48,16 +41,6 @@ export async function cleanOldConcurrencyLimitEntries(
   );
 }
 
-export async function getConcurrencyLimitActiveJobsCount(
-  team_id: string,
-): Promise<number> {
-  return await getRedisConnection().zcount(
-    constructKey(team_id),
-    Date.now(),
-    Infinity,
-  );
-}
-
 export async function getConcurrencyLimitActiveJobs(
   team_id: string,
   now: number = Date.now(),
@@ -69,20 +52,23 @@ export async function getConcurrencyLimitActiveJobs(
   );
 }
 
-export async function pushConcurrencyLimitActiveJob(
+export async function removeConcurrencyLimitedJobs(
   team_id: string,
-  id: string,
-  timeout: number,
-  now: number = Date.now(),
+  job_ids: string[],
 ) {
-  await getRedisConnection().zadd(constructKey(team_id), now + timeout, id);
-}
-
-export async function removeConcurrencyLimitActiveJob(
-  team_id: string,
-  id: string,
-) {
-  await getRedisConnection().zrem(constructKey(team_id), id);
+  if (job_ids.length === 0) return;
+  const redis = getRedisConnection();
+  const queueKey = constructQueueKey(team_id);
+  const chunkSize = 1000;
+  for (let i = 0; i < job_ids.length; i += chunkSize) {
+    const chunk = job_ids.slice(i, i + chunkSize);
+    const pipeline = redis.pipeline();
+    pipeline.zrem(queueKey, ...chunk);
+    for (const id of chunk) {
+      pipeline.del(constructJobKey(id));
+    }
+    await pipeline.exec();
+  }
 }
 
 type ConcurrencyLimitedJob = {

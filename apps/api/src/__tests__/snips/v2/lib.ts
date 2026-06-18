@@ -13,6 +13,9 @@ import {
   MapRequestInput,
   BatchScrapeRequestInput,
   SearchRequestInput,
+  SearchFeedbackRequestInput,
+  EndpointFeedbackRequestInput,
+  EndpointFeedbackResponse,
   ParseRequestInput,
 } from "../../../controllers/v2/types";
 import request from "supertest";
@@ -114,6 +117,9 @@ export type MonitorCreateInput = {
       }
   >;
   retentionDays?: number;
+  goal?: string;
+  judgeEnabled?: boolean;
+  origin?: string;
 };
 
 export async function monitorCreateRaw(
@@ -173,6 +179,26 @@ export async function monitorCheckRaw(
     .get(`/v2/monitor/${monitorId}/checks/${checkId}`)
     .set("Authorization", `Bearer ${identity.apiKey}`);
   return query ? req.query(query) : req;
+}
+
+export async function monitorEmailConfirmRaw(token: string) {
+  return await request(TEST_API_URL)
+    .post(`/v2/monitor/email/confirm`)
+    .set("Content-Type", "application/json")
+    .send({ token });
+}
+
+export async function monitorEmailUnsubscribeRaw(token: string) {
+  return await request(TEST_API_URL)
+    .post(`/v2/monitor/email/unsubscribe`)
+    .set("Content-Type", "application/json")
+    .send({ token });
+}
+
+export async function monitorEmailConfirmRawViaQuery(token: string) {
+  return await request(TEST_API_URL)
+    .post(`/v2/monitor/email/confirm`)
+    .query({ token });
 }
 
 export async function parseRaw(
@@ -609,6 +635,135 @@ export async function searchWithFailure(
 }> {
   const raw = await searchRaw(body, identity);
   expectSearchToFail(raw);
+  return raw.body;
+}
+
+export async function researchRaw(
+  path: string,
+  query: Record<string, string | number | boolean | string[]> | undefined,
+  identity?: Identity,
+) {
+  const req = request(TEST_API_URL)
+    .get(path)
+    .set("Content-Type", "application/json");
+  if (identity) {
+    req.set("Authorization", `Bearer ${identity.apiKey}`);
+  }
+  return query ? req.query(query) : req;
+}
+
+export async function searchRawFull(
+  body: SearchRequestInput,
+  identity: Identity,
+) {
+  return await request(TEST_API_URL)
+    .post("/v2/search")
+    .set("Authorization", `Bearer ${identity.apiKey}`)
+    .set("Content-Type", "application/json")
+    .send(body);
+}
+
+export async function searchFeedbackRaw(
+  searchId: string,
+  body: SearchFeedbackRequestInput,
+  identity: Identity,
+) {
+  return await request(TEST_API_URL)
+    .post("/v2/search/" + encodeURIComponent(searchId) + "/feedback")
+    .set("Authorization", `Bearer ${identity.apiKey}`)
+    .set("Content-Type", "application/json")
+    .send(body);
+}
+
+export async function searchFeedback(
+  searchId: string,
+  body: SearchFeedbackRequestInput,
+  identity: Identity,
+): Promise<{
+  success: true;
+  feedbackId: string;
+  creditsRefunded: number;
+  creditsRefundedToday?: number;
+  dailyRefundCap?: number;
+  dailyCapReached?: boolean;
+  alreadySubmitted?: boolean;
+  warning?: string;
+}> {
+  const raw = await searchFeedbackRaw(searchId, body, identity);
+  if (raw.statusCode !== 200) {
+    console.warn(
+      "Search feedback did not succeed",
+      JSON.stringify(raw.body, null, 2),
+    );
+  }
+  expect(raw.statusCode).toBe(200);
+  expect(raw.body.success).toBe(true);
+  expect(typeof raw.body.feedbackId).toBe("string");
+  expect(typeof raw.body.creditsRefunded).toBe("number");
+  return raw.body;
+}
+
+export async function searchFeedbackWithFailure(
+  searchId: string,
+  body: SearchFeedbackRequestInput,
+  identity: Identity,
+): Promise<{
+  success: false;
+  error: string;
+  details?: unknown;
+}> {
+  const raw = await searchFeedbackRaw(searchId, body, identity);
+  expect(raw.statusCode).not.toBe(200);
+  expect(raw.body.success).toBe(false);
+  expect(typeof raw.body.error).toBe("string");
+  return raw.body;
+}
+
+// =========================================
+// Generic Feedback API
+// =========================================
+
+export async function endpointFeedbackRaw(
+  body: EndpointFeedbackRequestInput,
+  identity: Identity,
+) {
+  return await request(TEST_API_URL)
+    .post("/v2/feedback")
+    .set("Authorization", `Bearer ${identity.apiKey}`)
+    .set("Content-Type", "application/json")
+    .send(body);
+}
+
+export async function endpointFeedback(
+  body: EndpointFeedbackRequestInput,
+  identity: Identity,
+): Promise<Exclude<EndpointFeedbackResponse, ErrorResponse>> {
+  const raw = await endpointFeedbackRaw(body, identity);
+  if (raw.statusCode !== 200) {
+    console.warn(
+      "Endpoint feedback did not succeed",
+      JSON.stringify(raw.body, null, 2),
+    );
+  }
+  expect(raw.statusCode).toBe(200);
+  expect(raw.body.success).toBe(true);
+  expect(typeof raw.body.feedbackId).toBe("string");
+  expect(typeof raw.body.creditsRefunded).toBe("number");
+  return raw.body;
+}
+
+export async function endpointFeedbackWithFailure(
+  body: EndpointFeedbackRequestInput,
+  identity: Identity,
+): Promise<{
+  success: false;
+  error: string;
+  details?: unknown;
+}> {
+  const raw = await endpointFeedbackRaw(body, identity);
+  expect(raw.statusCode).not.toBe(200);
+  expect(raw.body.success).toBe(false);
+  expect(typeof raw.body.error).toBe("string");
   return raw.body;
 }
 

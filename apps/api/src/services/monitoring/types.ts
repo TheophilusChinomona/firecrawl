@@ -94,21 +94,42 @@ const monitorNotificationSchema = z
   .optional()
   .default({});
 
-export const createMonitorSchema = z.strictObject({
+function applyJudgeEnabledDefault<
+  T extends { goal?: string | null; judgeEnabled?: boolean },
+>(input: T): T {
+  if (
+    input.judgeEnabled === undefined &&
+    typeof input.goal === "string" &&
+    input.goal.trim().length > 0
+  ) {
+    return { ...input, judgeEnabled: true };
+  }
+  return input;
+}
+
+const createMonitorBaseSchema = z.strictObject({
   name: z.string().min(1).max(256),
   schedule: monitorScheduleSchema,
   webhook: monitorWebhookSchema.optional(),
   notification: monitorNotificationSchema,
   targets: z.array(monitorTargetSchema).min(1).max(50),
   retentionDays: z.number().int().positive().max(365).optional().default(30),
+  goal: z.string().max(2000).nullish(),
+  judgeEnabled: z.boolean().optional(),
+  origin: z.string().optional().prefault("api"),
 });
 
-export const updateMonitorSchema = createMonitorSchema
+export const createMonitorSchema = createMonitorBaseSchema.transform(
+  applyJudgeEnabledDefault,
+);
+
+export const updateMonitorSchema = createMonitorBaseSchema
   .partial()
   .extend({
     status: z.enum(["active", "paused"]).optional(),
   })
-  .refine(x => Object.keys(x).length > 0, "Update body cannot be empty");
+  .refine(x => Object.keys(x).length > 0, "Update body cannot be empty")
+  .transform(applyJudgeEnabledDefault);
 
 export const listMonitorsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(25),
@@ -126,6 +147,7 @@ export const listMonitorChecksQuerySchema = z.object({
       "failed",
       "partial",
       "skipped_overlap",
+      "skipped_no_credits",
     ])
     .optional(),
 });
@@ -161,6 +183,8 @@ export type MonitorRow = {
   webhook: unknown | null;
   notification: MonitorNotification | null;
   last_check_summary: MonitorSummary | null;
+  goal: string | null;
+  judge_enabled: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -177,7 +201,8 @@ export type MonitorCheckRow = {
     | "completed"
     | "failed"
     | "partial"
-    | "skipped_overlap";
+    | "skipped_overlap"
+    | "skipped_no_credits";
   scheduled_for: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -215,7 +240,7 @@ export type MonitorPageRow = {
   team_id: string;
   target_id: string;
   url: string;
-  url_hash: string;
+  url_hash: Buffer;
   source: MonitorPageSource;
   first_seen_check_id: string | null;
   last_seen_check_id: string | null;
@@ -244,7 +269,7 @@ export type MonitorCheckPageInsert = {
   team_id: string;
   target_id: string;
   url: string;
-  url_hash?: string;
+  url_hash?: Buffer;
   status: MonitorPageStatus;
   previous_scrape_id?: string | null;
   current_scrape_id?: string | null;
@@ -254,6 +279,17 @@ export type MonitorCheckPageInsert = {
   status_code?: number | null;
   error?: string | null;
   metadata?: unknown | null;
+  judgment?: {
+    meaningful: boolean;
+    confidence: "high" | "medium" | "low";
+    reason: string;
+    meaningfulChanges: Array<{
+      type: "added" | "removed" | "changed";
+      before: string | null;
+      after: string | null;
+      reason: string;
+    }>;
+  } | null;
 };
 
 export function withMarkdownFormat(
