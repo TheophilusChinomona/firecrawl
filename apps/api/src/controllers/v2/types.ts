@@ -27,6 +27,7 @@ import {
 } from "../../services/webhook/schema";
 import { BrandingProfile } from "../../types/branding";
 import { ProductProfile } from "../../types/product";
+import { MenuProfile } from "../../types/menu";
 
 // Base URL schema with common validation logic
 export const URL = z.preprocess(
@@ -460,6 +461,7 @@ export type FormatObject =
   | QueryFormatWithOptions
   | { type: "branding" }
   | { type: "product" }
+  | { type: "menu" }
   | { type: "audio" }
   | { type: "video" };
 
@@ -632,6 +634,7 @@ const baseScrapeOptions = z.strictObject({
           attributesFormatWithOptions,
           z.strictObject({ type: z.literal("branding") }),
           z.strictObject({ type: z.literal("product") }),
+          z.strictObject({ type: z.literal("menu") }),
           questionFormatWithOptions,
           highlightsFormatWithOptions,
           queryFormatWithOptions,
@@ -722,6 +725,18 @@ const waitForRefineOpts = {
   path: ["waitFor"],
 };
 
+export const applyScrapeOptionsDefaults = <T extends ScrapeOptionsBase>(
+  obj: T,
+): T & { skipTlsVerification: boolean } => ({
+  ...obj,
+  skipTlsVerification:
+    obj.skipTlsVerification ??
+    ((obj.headers && Object.keys(obj.headers).length > 0) ||
+    (obj.actions && obj.actions.length > 0)
+      ? false
+      : true),
+});
+
 // Base transform function that handles both nullable and non-nullable cases
 // Uses generic type to preserve all fields from extended schemas
 const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
@@ -729,7 +744,7 @@ const extractTransformImpl = <T extends ScrapeOptionsBase | undefined>(
 ): T extends undefined ? undefined : T => {
   if (!obj) return obj as T extends undefined ? undefined : T;
   // Handle timeout
-  let result = { ...obj };
+  let result = applyScrapeOptionsDefaults(obj);
   if (
     obj.formats.find(x => typeof x === "object" && x.type === "json") &&
     obj.timeout === 30000
@@ -1215,6 +1230,7 @@ export type Document = {
   highlights?: string;
   branding?: BrandingProfile;
   product?: ProductProfile;
+  menu?: MenuProfile;
   warning?: string;
   attributes?: {
     selector: string;
@@ -1538,6 +1554,7 @@ export type TeamFlags = {
   maxBrowserSessions?: number;
   researchBeta?: boolean;
   highlightsBeta?: boolean;
+  menuBeta?: boolean;
 } | null;
 
 interface RequestWithMaybeACUC<
@@ -1786,6 +1803,8 @@ export function fromV1ScrapeOptions(
             return { type: "branding" as const };
           } else if (x === "product") {
             return { type: "product" as const };
+          } else if (x === "menu") {
+            return { type: "menu" as const };
           } else {
             return x;
           }
@@ -1947,6 +1966,7 @@ export const searchRequestSchema = z
                 z.strictObject({ type: z.literal("images") }),
                 z.strictObject({ type: z.literal("summary") }),
                 z.strictObject({ type: z.literal("product") }),
+                z.strictObject({ type: z.literal("menu") }),
                 jsonFormatWithOptions,
                 questionFormatWithOptions,
                 highlightsFormatWithOptions,

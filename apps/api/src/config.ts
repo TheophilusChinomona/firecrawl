@@ -73,8 +73,6 @@ const configSchema = z.object({
   LLAMAPARSE_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   AUTUMN_SECRET_KEY: z.string().optional(),
-  AUTUMN_REQUEST_TRACK_EXPERIMENT: z.string().optional(),
-  AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: z.coerce.number().default(100),
   RESEND_API_KEY: z.string().optional(),
   PREVIEW_TOKEN: z.string().optional(),
   SEARCH_PREVIEW_TOKEN: z.string().optional(),
@@ -331,6 +329,9 @@ const configSchema = z.object({
 
   // Product extraction (product-search Rust service)
   PRODUCT_EXTRACTION_SERVICE_URL: z.string().optional(),
+
+  // Menu extraction (menu-search Rust service)
+  MENU_EXTRACTION_SERVICE_URL: z.string().optional(),
 
   // PII Redaction (fire-privacy)
   FIRE_PRIVACY_URL: z.string().optional(),
