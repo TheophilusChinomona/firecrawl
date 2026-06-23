@@ -59,7 +59,7 @@ x-common-env: &common-env
   NUQ_BACKEND: ${NUQ_BACKEND}
   FDB_CLUSTER_FILE: ${NUQ_BACKEND:+/var/fdb/fdb.cluster}
   FIRECRAWL_AGENT_URL: ${FIRECRAWL_AGENT_URL:-http://firecrawl-agent:8090}
-  AGENT_MODEL: ${AGENT_MODEL:-openrouter/meta-llama/llama-3.3-70b-instruct:free}
+  AGENT_MODEL: ${AGENT_MODEL:-anthropic/claude-haiku-4-5}
   AGENT_MAX_SOURCES: ${AGENT_MAX_SOURCES:-5}
   AGENT_TIMEOUT_MS: ${AGENT_TIMEOUT_MS:-180000}
 
@@ -268,11 +268,15 @@ services:
       - backend
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      AGENT_MODEL: ${AGENT_MODEL:-openrouter/nvidia/nemotron-3-super-120b-a12b:free}
+      AGENT_MODEL: ${AGENT_MODEL:-anthropic/claude-haiku-4-5}
       AGENT_MAX_SOURCES: ${AGENT_MAX_SOURCES:-5}
       FIRECRAWL_API_URL: http://api:3002
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
       PI_CODING_AGENT_DIR: /app/.omp/agent
+    volumes:
+      # Bind-mount host omp data so OAuth tokens survive container rebuilds
+      # and the SDK can refresh them. Seed with: cp ~/.omp/agent/agent.db /home/openclaw/omp-agent-data/
+      - ${OMP_AGENT_DATA_DIR:-/home/openclaw/omp-agent-data}:/app/.omp/agent
     logging:
       driver: "json-file"
       options:

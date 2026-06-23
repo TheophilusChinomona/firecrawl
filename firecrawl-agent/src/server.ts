@@ -9,7 +9,7 @@ import type { ScrapedSource } from "./tools.js";
 
 const DEFAULT_MODEL_STRING =
   process.env.AGENT_MODEL ??
-  "openrouter/meta-llama/llama-3.3-70b-instruct:free";
+  "anthropic/claude-haiku-4-5";
 
 // Initialise auth once at startup. Key must be set on AuthStorage before
 // ModelRegistry is constructed so the registry's initial refresh sees it.

@@ -315,7 +315,7 @@ const configSchema = z.object({
   EXTRACT_V3_BETA_URL: z.string().optional(),
   AGENT_INTEROP_SECRET: z.string().optional(),
   FIRECRAWL_AGENT_URL: z.string().default("http://firecrawl-agent:8090"),
-  AGENT_MODEL: z.string().default("openrouter/meta-llama/llama-3.3-70b-instruct:free"),
+  AGENT_MODEL: z.string().default("anthropic/claude-haiku-4-5"),
   AGENT_MAX_SOURCES: z.coerce.number().int().min(1).max(10).default(5),
   AGENT_TIMEOUT_MS: z.coerce.number().int().positive().default(180000),
 
