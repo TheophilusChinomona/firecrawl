@@ -58,6 +58,10 @@ x-common-env: &common-env
   # Set NUQ_BACKEND=fdb to run the queue on FoundationDB instead of Postgres
   NUQ_BACKEND: ${NUQ_BACKEND}
   FDB_CLUSTER_FILE: ${NUQ_BACKEND:+/var/fdb/fdb.cluster}
+  FIRECRAWL_AGENT_URL: ${FIRECRAWL_AGENT_URL:-http://firecrawl-agent:8090}
+  AGENT_MODEL: ${AGENT_MODEL:-openrouter/meta-llama/llama-3.3-70b-instruct:free}
+  AGENT_MAX_SOURCES: ${AGENT_MAX_SOURCES:-5}
+  AGENT_TIMEOUT_MS: ${AGENT_TIMEOUT_MS:-180000}
 
 services:
   playwright-service:
@@ -107,6 +111,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      firecrawl-agent:
+        condition: service_started
     ports:
       - "${PORT:-3002}:${INTERNAL_PORT:-3002}"
     volumes:
@@ -253,6 +259,26 @@ services:
     networks:
       - backend
     restart: "no"
+
+  firecrawl-agent:
+    build:
+      context: .
+      dockerfile: firecrawl-agent/Dockerfile
+    networks:
+      - backend
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AGENT_MODEL: ${AGENT_MODEL:-openrouter/nvidia/nemotron-3-super-120b-a12b:free}
+      AGENT_MAX_SOURCES: ${AGENT_MAX_SOURCES:-5}
+      FIRECRAWL_API_URL: http://api:3002
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      PI_CODING_AGENT_DIR: /app/.omp/agent
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
 
 volumes:
   nuq-postgres-data:

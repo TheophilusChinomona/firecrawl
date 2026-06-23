@@ -1,0 +1,25 @@
+providers:
+  openrouter:
+    baseUrl: https://openrouter.ai/api/v1
+    apiKey: OPENROUTER_API_KEY
+    api: openai-completions
+    models:
+      # Default — free, provider:openrouter in omp registry. Rate-limited at Venice
+      # during peak hours; the sidecar retries up to 3× with 35s gaps to cover the
+      # typical Retry-After: 28s window.
+      - id: meta-llama/llama-3.3-70b-instruct:free
+        name: Llama 3.3 70B Instruct (free)
+        api: openai-completions
+        input: [text]
+        contextWindow: 131072
+        maxTokens: 8192
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      # Paid fallback — set AGENT_MODEL=openrouter/openai/gpt-4o-mini if the free
+      # tier is persistently unavailable. ~$0.001 per agent call.
+      - id: openai/gpt-4o-mini
+        name: GPT-4o Mini (via OpenRouter)
+        api: openai-completions
+        input: [text]
+        contextWindow: 128000
+        maxTokens: 16384
+        cost: { input: 0.00015, output: 0.0006, cacheRead: 0, cacheWrite: 0 }

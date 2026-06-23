@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/node";
 import {
   getDeepResearchQueue,
   getGenerateLlmsTxtQueue,
+  getAgentQueue,
   getRedisConnection,
 } from "./queue-service";
 import { Job, Queue, Worker } from "bullmq";
@@ -31,6 +32,11 @@ import {
 } from "./monitoring/runner";
 import { enqueueDueMonitorChecks } from "./monitoring/scheduler";
 import { consumeMonitorCheckJobs } from "./monitoring/queue";
+import {
+  getAgent,
+  updateAgent,
+  saveAgentResult,
+} from "../lib/agent/agent-redis";
 
 configDotenv();
 
@@ -127,6 +133,147 @@ const processDeepResearchJobInternal = async (
     clearInterval(extendLockInterval);
   }
 };
+const processAgentJobInternal = async (
+  token: string,
+  job: Job & { id: string },
+) => {
+  const { agentId, teamId } = job.data as {
+    agentId: string;
+    teamId: string;
+    request: unknown;
+    subId: string | undefined;
+    apiKeyId: string | null;
+  };
+
+  const logger = _logger.child({
+    module: "agent-worker",
+    method: "processAgentJobInternal",
+    jobId: job.id,
+    agentId,
+    teamId,
+  });
+
+  const extendLockInterval = setInterval(async () => {
+    logger.info(`🔄 Worker extending lock on job ${job.id}`);
+    await job.extendLock(token, jobLockExtensionTime);
+  }, jobLockExtendInterval);
+
+  try {
+    // Cooperative cancel check before starting expensive work.
+    const stored = await getAgent(agentId);
+    if (stored?.status === "cancelled") {
+      await job.moveToCompleted({ cancelled: true }, token, false);
+      return { cancelled: true };
+    }
+
+    const storedRequest = stored?.request as Record<string, unknown> | undefined;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      config.AGENT_TIMEOUT_MS,
+    );
+
+    let sidecarResponse: Response;
+    try {
+      sidecarResponse = await fetch(`${config.FIRECRAWL_AGENT_URL}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: storedRequest?.["prompt"],
+          urls: storedRequest?.["urls"],
+          schema: storedRequest?.["schema"],
+          model: stored?.model,
+          strictConstrainToURLs: storedRequest?.["strictConstrainToURLs"],
+          maxSources: config.AGENT_MAX_SOURCES,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!sidecarResponse.ok) {
+      const errText = await sidecarResponse.text();
+      const err = new Error(`sidecar returned ${sidecarResponse.status}: ${errText}`);
+      await updateAgent(agentId, { status: "failed", error: err.message });
+      await job.moveToFailed(err, token, false);
+      return { success: false, error: err.message };
+    }
+
+    const body: unknown = await sidecarResponse.json();
+    const success =
+      body !== null &&
+      typeof body === "object" &&
+      "success" in (body as Record<string, unknown>) &&
+      (body as Record<string, unknown>)["success"] === true;
+
+    if (success) {
+      const bodyObj = body as Record<string, unknown>;
+      const data = bodyObj["data"];
+      const model = typeof bodyObj["model"] === "string" ? bodyObj["model"] : stored?.model ?? "";
+      const sources =
+        data !== null &&
+        typeof data === "object" &&
+        "sources" in (data as Record<string, unknown>)
+          ? ((data as Record<string, unknown>)["sources"] as unknown[])
+          : [];
+      await saveAgentResult(agentId, data);
+      await updateAgent(agentId, {
+        status: "completed",
+        model,
+        sources: Array.isArray(sources)
+          ? sources.map((s: unknown) => {
+              const obj = s as Record<string, unknown>;
+              return {
+                url: typeof obj["url"] === "string" ? obj["url"] : "",
+                ...(typeof obj["title"] === "string" ? { title: obj["title"] } : {}),
+              };
+            })
+          : [],
+      });
+      await job.moveToCompleted(body, token, false);
+      return body;
+    } else {
+      const errMsg =
+        body !== null &&
+        typeof body === "object" &&
+        "error" in (body as Record<string, unknown>) &&
+        typeof (body as Record<string, unknown>)["error"] === "string"
+          ? (body as Record<string, unknown>)["error"] as string
+          : "Agent sidecar reported failure";
+      const err = new Error(errMsg);
+      await updateAgent(agentId, { status: "failed", error: errMsg });
+      await job.moveToFailed(err, token, false);
+      return { success: false, error: errMsg };
+    }
+  } catch (error) {
+    logger.error(`🚫 Agent job errored ${job.id}`, { error });
+
+    if (!(error instanceof TransportableError)) {
+      Sentry.captureException(error, { data: { job: job.id } });
+    }
+
+    const errMsg =
+      error instanceof Error ? error.message : "Unknown error occurred";
+
+    try {
+      await job.moveToFailed(
+        error instanceof Error ? error : new Error(errMsg),
+        token,
+        false,
+      );
+    } catch (e) {
+      logger.error("Failed to move agent job to failed state", { error: e });
+    }
+
+    await updateAgent(agentId, { status: "failed", error: errMsg });
+    return { success: false, error: errMsg };
+  } finally {
+    clearInterval(extendLockInterval);
+  }
+};
+
 
 const processGenerateLlmsTxtJobInternal = async (
   token: string,
@@ -489,6 +636,7 @@ app.listen(workerPort, () => {
   await Promise.all([
     workerFun(getDeepResearchQueue(), processDeepResearchJobInternal),
     workerFun(getGenerateLlmsTxtQueue(), processGenerateLlmsTxtJobInternal),
+    workerFun(getAgentQueue(), processAgentJobInternal),
     crawlFinishWorker(),
   ]);
 

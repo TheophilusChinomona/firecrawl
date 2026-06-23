@@ -940,7 +940,7 @@ export const agentRequestSchema = z.strictObject({
   webhook: agentWebhookSchema.optional(),
 
   overrideWhitelist: z.string().optional(),
-  model: z.enum(["spark-1-pro", "spark-1-mini"]).default("spark-1-pro"),
+  model: z.string().min(1).default(config.AGENT_MODEL),
 });
 
 export type AgentRequest = z.infer<typeof agentRequestSchema>;
@@ -1408,10 +1408,10 @@ export type AgentStatusResponse =
   | ErrorResponse
   | {
       success: boolean;
-      status: "processing" | "completed" | "failed";
+      status: "processing" | "completed" | "failed" | "cancelled";
       error?: string;
-      data?: any;
-      model?: "spark-1-pro" | "spark-1-mini";
+      data?: unknown;
+      model?: string;
       expiresAt: string;
       creditsUsed?: number;
     };

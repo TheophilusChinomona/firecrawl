@@ -1,15 +1,56 @@
-import { Response } from "express";
-import { AgentCancelResponse, RequestWithAuth } from "./types";
+import type { Response } from "express";
+import type { AgentCancelResponse, RequestWithAuth } from "./types";
 import {
   supabaseGetAgentByIdDirect,
   supabaseGetAgentRequestByIdDirect,
 } from "../../lib/supabase-jobs";
 import { config } from "../../config";
+import {
+  getAgent,
+  updateAgent,
+} from "../../lib/agent/agent-redis";
+import { getAgentQueue } from "../../services/queue-service";
 
 export async function agentCancelController(
-  req: RequestWithAuth<{ jobId: string }, AgentCancelResponse, any>,
+  req: RequestWithAuth<{ jobId: string }, AgentCancelResponse, unknown>,
   res: Response<AgentCancelResponse>,
 ) {
+  // Local Redis branch — check first so self-hosted works without supabase.
+  const localAgent = await getAgent(req.params.jobId);
+  if (localAgent) {
+    if (localAgent.team_id !== req.auth.team_id) {
+      return res.status(404).json({ success: false, error: "Agent job not found" });
+    }
+
+    if (localAgent.status === "completed" || localAgent.status === "failed") {
+      return res.status(409).json({ success: false, error: "Agent already finished" });
+    }
+
+    if (localAgent.status === "cancelled") {
+      return res.status(409).json({
+        success: false,
+        error: "Agent is already cancelled",
+      });
+    }
+
+    await updateAgent(req.params.jobId, {
+      status: "cancelled",
+      cancelledAt: Date.now(),
+    });
+
+    // Best-effort remove from queue; ignore errors.
+    try {
+      const queue = getAgentQueue();
+      const job = await queue.getJob(req.params.jobId);
+      await job?.remove();
+    } catch {
+      // ignore
+    }
+
+    return res.status(200).json({ success: true });
+  }
+
+  // Remote / supabase branch (cloud mode with EXTRACT_V3_BETA_URL).
   const agentRequest = await supabaseGetAgentRequestByIdDirect(
     req.params.jobId,
   );

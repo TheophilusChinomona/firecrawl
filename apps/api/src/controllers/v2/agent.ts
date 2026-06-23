@@ -1,5 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
-import { Response } from "express";
+import type { Response } from "express";
 import {
   AgentRequest,
   AgentResponse,
@@ -11,9 +11,11 @@ import { logRequest } from "../../services/logging/log_job";
 import { config } from "../../config";
 import { agentConsumeFreeRequestIfLeft } from "../../db/rpc";
 import { getScrapeZDR } from "../../lib/zdr-helpers";
+import { saveAgent } from "../../lib/agent/agent-redis";
+import { getAgentQueue } from "../../services/queue-service";
 
 export async function agentController(
-  req: RequestWithAuth<{}, AgentResponse, AgentRequest>,
+  req: RequestWithAuth<Record<string, never>, AgentResponse, AgentRequest>,
   res: Response<AgentResponse>,
 ) {
   const agentId = uuidv7();
@@ -46,26 +48,89 @@ export async function agentController(
     zeroDataRetention: getScrapeZDR(req.acuc?.flags) === "forced",
   });
 
-  if (!config.EXTRACT_V3_BETA_URL) {
-    throw new Error("Agent beta is not enabled.");
+  // Remote cloud passthrough when configured.
+  if (config.EXTRACT_V3_BETA_URL) {
+    // If maxCredits > 2500, skip free request consumption — this is always a paid request
+    const highCreditRequest =
+      req.body.maxCredits !== undefined && req.body.maxCredits > 2500;
+
+    let freeRequest: unknown;
+
+    if (config.USE_DB_AUTHENTICATION && !highCreditRequest) {
+      freeRequest = await agentConsumeFreeRequestIfLeft(req.auth.team_id);
+    }
+
+    const isFreeRequest = highCreditRequest
+      ? false
+      : config.USE_DB_AUTHENTICATION
+        ? !!(
+            freeRequest !== null &&
+            typeof freeRequest === "object" &&
+            Array.isArray(freeRequest) &&
+            freeRequest[0] !== null &&
+            typeof freeRequest[0] === "object" &&
+            "consumed" in (freeRequest[0] as Record<string, unknown>) &&
+            (freeRequest[0] as Record<string, unknown>)["consumed"]
+          )
+        : true;
+
+    await logRequest({
+      id: agentId,
+      kind: "agent",
+      api_version: "v2",
+      team_id: req.auth.team_id,
+      origin: req.body.origin ?? "api",
+      integration: req.body.integration,
+      target_hint: req.body.urls?.[0] ?? req.body.prompt ?? "",
+      zeroDataRetention: false, // not supported for agent
+      api_key_id: req.acuc?.api_key_id ?? null,
+    });
+
+    const passthrough = await fetch(
+      config.EXTRACT_V3_BETA_URL + "/internal/extracts",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.AGENT_INTEROP_SECRET}`,
+        },
+        body: JSON.stringify({
+          id: agentId,
+          urls: req.body.urls,
+          schema: req.body.schema,
+          prompt: req.body.prompt,
+          apiKey: req.acuc!.api_key,
+          apiKeyId: req.acuc!.api_key_id ?? undefined,
+          teamId: req.auth.team_id,
+          isFreeRequest,
+          maxCredits: req.body.maxCredits ?? undefined,
+          strictConstrainToURLs: req.body.strictConstrainToURLs ?? undefined,
+          webhook: req.body.webhook ?? undefined,
+          model: req.body.model,
+        }),
+      },
+    );
+
+    if (passthrough.status !== 200) {
+      const text = await passthrough.text();
+
+      logger.error("Failed to passthrough agent request.", {
+        status: passthrough.status,
+        text,
+      });
+      return res.status(500).json({
+        success: false,
+        error: "Failed to passthrough agent request.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      id: agentId,
+    });
   }
 
-  // If maxCredits > 2500, skip free request consumption — this is always a paid request
-  const highCreditRequest =
-    req.body.maxCredits !== undefined && req.body.maxCredits > 2500;
-
-  let freeRequest: any;
-
-  if (config.USE_DB_AUTHENTICATION && !highCreditRequest) {
-    freeRequest = await agentConsumeFreeRequestIfLeft(req.auth.team_id);
-  }
-
-  const isFreeRequest = highCreditRequest
-    ? false
-    : config.USE_DB_AUTHENTICATION
-      ? !!freeRequest?.[0]?.consumed
-      : true;
-
+  // Local omp-sidecar branch.
   await logRequest({
     id: agentId,
     kind: "agent",
@@ -74,47 +139,30 @@ export async function agentController(
     origin: req.body.origin ?? "api",
     integration: req.body.integration,
     target_hint: req.body.urls?.[0] ?? req.body.prompt ?? "",
-    zeroDataRetention: false, // not supported for agent
+    zeroDataRetention: false,
     api_key_id: req.acuc?.api_key_id ?? null,
   });
 
-  const passthrough = await fetch(
-    config.EXTRACT_V3_BETA_URL + "/internal/extracts",
+  await saveAgent(agentId, {
+    id: agentId,
+    team_id: req.auth.team_id,
+    createdAt: Date.now(),
+    status: "processing",
+    request: req.body,
+    model: req.body.model,
+  });
+
+  await getAgentQueue().add(
+    agentId,
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.AGENT_INTEROP_SECRET}`,
-      },
-      body: JSON.stringify({
-        id: agentId,
-        urls: req.body.urls,
-        schema: req.body.schema,
-        prompt: req.body.prompt,
-        apiKey: req.acuc!.api_key,
-        apiKeyId: req.acuc!.api_key_id ?? undefined,
-        teamId: req.auth.team_id,
-        isFreeRequest,
-        maxCredits: req.body.maxCredits ?? undefined,
-        strictConstrainToURLs: req.body.strictConstrainToURLs ?? undefined,
-        webhook: req.body.webhook ?? undefined,
-        model: req.body.model,
-      }),
+      agentId,
+      teamId: req.auth.team_id,
+      request: req.body,
+      subId: req.acuc?.sub_id,
+      apiKeyId: req.acuc?.api_key_id ?? null,
     },
+    { jobId: agentId },
   );
-
-  if (passthrough.status !== 200) {
-    const text = await passthrough.text();
-
-    logger.error("Failed to passthrough agent request.", {
-      status: passthrough.status,
-      text,
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to passthrough agent request.",
-    });
-  }
 
   return res.status(200).json({
     success: true,

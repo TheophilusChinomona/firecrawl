@@ -1,0 +1,10 @@
+node_modules/
+bun.lock
+.omp/agent/*.db
+.omp/agent/*.db-shm
+.omp/agent/*.db-wal
+.omp/agent/history.db
+.omp/agent/history.db-shm
+.omp/agent/history.db-wal
+.omp/agent/sessions/
+.omp/agent/blobs/
