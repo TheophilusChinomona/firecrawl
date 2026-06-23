@@ -1,8 +1,10 @@
 import { configDotenv } from "dotenv";
+import { v7 as uuidv7 } from "uuid";
 import { config } from "../../../config";
 import { parse } from "tldts";
 import { TeamFlags } from "../../../controllers/v1/types";
-import { supabase_rr_service } from "../../../services/supabase";
+import { db, dbRr } from "../../../db/connection";
+import * as schema from "../../../db/schema";
 
 configDotenv();
 
@@ -10,6 +12,68 @@ type BlocklistBlob = {
   blocklist: string[];
   allowedKeywords: string[];
 };
+
+type BlockContext = {
+  team_id?: string | null;
+  origin?: string | null;
+};
+
+type BlockHit = {
+  id: string;
+  domain: string;
+  url: string;
+  team_id: string | null;
+  origin: string | null;
+};
+
+const HIT_BUFFER_FLUSH_MS = 5000;
+const HIT_BUFFER_MAX_SIZE = 200;
+let hitBuffer: BlockHit[] = [];
+let hitFlushTimer: NodeJS.Timeout | null = null;
+
+async function flushHits(): Promise<void> {
+  if (hitBuffer.length === 0) return;
+  const batch = hitBuffer;
+  hitBuffer = [];
+  if (config.USE_DB_AUTHENTICATION !== true) return;
+  try {
+    await db.insert(schema.blocklist_hits).values(batch);
+  } catch {}
+}
+
+function scheduleHitFlush(): void {
+  if (hitFlushTimer !== null) return;
+  hitFlushTimer = setTimeout(() => {
+    hitFlushTimer = null;
+    void flushHits();
+  }, HIT_BUFFER_FLUSH_MS);
+  if (typeof hitFlushTimer.unref === "function") hitFlushTimer.unref();
+}
+
+function recordHit(
+  url: string,
+  domain: string,
+  context: BlockContext | undefined,
+): void {
+  if (context === undefined) return;
+  if (config.USE_DB_AUTHENTICATION !== true) return;
+  hitBuffer.push({
+    id: uuidv7(),
+    domain,
+    url: url.length > 2048 ? url.slice(0, 2048) : url,
+    team_id: context.team_id ?? null,
+    origin: context.origin ?? null,
+  });
+  if (hitBuffer.length >= HIT_BUFFER_MAX_SIZE) {
+    if (hitFlushTimer !== null) {
+      clearTimeout(hitFlushTimer);
+      hitFlushTimer = null;
+    }
+    void flushHits();
+  } else {
+    scheduleHitFlush();
+  }
+}
 
 function allowedKeywordMatches(url: string, allowedKeyword: string): boolean {
   const keyword = allowedKeyword.trim();
@@ -48,13 +112,13 @@ export async function initializeBlocklist() {
     return;
   }
 
-  const { data, error } = await supabase_rr_service
-    .from("blocklist")
-    .select("*")
-    .single();
-
-  if (error) {
-    throw new Error(`Error getting blocklist: ${error.message}`);
+  let data: { data: any } | undefined;
+  try {
+    [data] = await dbRr.select().from(schema.blocklist).limit(1);
+  } catch (error) {
+    throw new Error(
+      `Error getting blocklist: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+    );
   }
 
   if (!data) {
@@ -63,7 +127,11 @@ export async function initializeBlocklist() {
   blob = data.data;
 }
 
-export function isUrlBlocked(url: string, flags: TeamFlags): boolean {
+export function isUrlBlocked(
+  url: string,
+  flags: TeamFlags,
+  context?: BlockContext,
+): boolean {
   if (blob === null) {
     throw new Error("Blocklist not initialized");
   }
@@ -106,11 +174,13 @@ export function isUrlBlocked(url: string, flags: TeamFlags): boolean {
 
   // Block exact matches
   if (blockedlist.includes(domain)) {
+    recordHit(url, domain, context);
     return true;
   }
 
   // Block subdomains
   if (blockedlist.some(blocked => domain.endsWith(`.${blocked}`))) {
+    recordHit(url, domain, context);
     return true;
   }
 
@@ -124,6 +194,7 @@ export function isUrlBlocked(url: string, flags: TeamFlags): boolean {
       blocked => blocked.startsWith(baseDomain + ".") && blocked !== domain,
     )
   ) {
+    recordHit(url, domain, context);
     return true;
   }
 

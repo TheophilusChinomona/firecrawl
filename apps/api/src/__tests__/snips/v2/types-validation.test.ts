@@ -38,6 +38,29 @@ describe("V2 Types Validation", () => {
       expect(result.url).toBe("https://example.com");
       expect(result.origin).toBe("api");
       expect(result.formats).toEqual([{ type: "markdown" }]);
+      expect(result.skipTlsVerification).toBe(true);
+    });
+
+    it("should preserve explicit skipTlsVerification false", () => {
+      const input: ScrapeRequestInput = {
+        url: "https://example.com",
+        skipTlsVerification: false,
+      };
+
+      const result = scrapeRequestSchema.parse(input);
+      expect(result.skipTlsVerification).toBe(false);
+    });
+
+    it("should default skipTlsVerification to false when custom headers are used", () => {
+      const input: ScrapeRequestInput = {
+        url: "https://example.com",
+        headers: {
+          "x-test": "true",
+        },
+      };
+
+      const result = scrapeRequestSchema.parse(input);
+      expect(result.skipTlsVerification).toBe(false);
     });
 
     it("should accept valid scrape request with format objects", () => {
@@ -767,7 +790,7 @@ describe("V2 Types Validation", () => {
         deduplicateSimilarURLs: false,
         ignoreQueryParameters: true,
         regexOnFullURL: true,
-        delay: 1000,
+        delay: 1,
         prompt: "Extract blog posts",
         scrapeOptions: {
           formats: [{ type: "markdown" }],
@@ -1345,6 +1368,38 @@ describe("V2 Types Validation", () => {
         cron: "7-59/15 * * * *",
         timezone: "UTC",
       });
+    });
+
+    it("should accept daily am/pm schedule text", () => {
+      const cases = [
+        ["daily at 9am", "0 9 * * *"],
+        ["daily at 9:30am", "30 9 * * *"],
+        ["daily at 5pm", "0 17 * * *"],
+        ["daily at 5:30 pm", "30 17 * * *"],
+        ["daily at 12am", "0 0 * * *"],
+        ["daily at 12pm", "0 12 * * *"],
+      ] as const;
+
+      for (const [text, cron] of cases) {
+        const result = updateMonitorSchema.parse({
+          schedule: { text },
+        });
+
+        expect(result.schedule).toEqual({
+          cron,
+          timezone: "UTC",
+        });
+      }
+    });
+
+    it("should reject invalid daily am/pm hours", () => {
+      expect(() =>
+        updateMonitorSchema.parse({
+          schedule: {
+            text: "daily at 13pm",
+          },
+        }),
+      ).toThrow("Daily schedule hour with am/pm must be between 1 and 12");
     });
 
     it("should reject ambiguous schedule definitions", () => {

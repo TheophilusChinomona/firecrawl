@@ -8,9 +8,9 @@ import {
 } from "../controllers/v1/types";
 import { RateLimiterMode } from "../types";
 import { authenticateUser } from "../controllers/auth";
+import { applyAgentAuthDiscoveryHeader } from "../lib/agent-auth-discovery";
 import { createIdempotencyKey } from "../services/idempotency/create";
 import { validateIdempotencyKey } from "../services/idempotency/validate";
-import { checkTeamCredits } from "../services/billing/credit_billing";
 import { isUrlBlocked } from "../scraper/WebScraper/utils/blocklist";
 import { logger } from "../lib/logger";
 import {
@@ -23,15 +23,15 @@ import { isSelfHosted } from "../lib/deployment";
 import { validate as isUuid } from "uuid";
 
 import { config } from "../config";
-import { supabase_service } from "../services/supabase";
+import { getAgentFreeRequestsLeft } from "../db/rpc";
 import {
   autumnService,
-  isAutumnCheckEnabled,
-  isAutumnCheckDryRun,
+  CREDITS_FEATURE_ID,
 } from "../services/autumn/autumn.service";
 
 export function checkCreditsMiddleware(
   _minimum?: number,
+  featureId: string = CREDITS_FEATURE_ID,
 ): (req: RequestWithAuth, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     let minimum = _minimum;
@@ -103,77 +103,45 @@ export function checkCreditsMiddleware(
 
       if (req.path.startsWith("/agent")) {
         if (config.USE_DB_AUTHENTICATION) {
-          const { data, error: freeRequestError } = await supabase_service.rpc(
-            "get_agent_free_requests_left",
-            {
-              i_team_id: req.auth.team_id,
-            },
-          );
-
-          if (freeRequestError) {
+          try {
+            const data = await getAgentFreeRequestsLeft(req.auth.team_id);
+            if (data?.[0]?.free_requests_left !== 0) {
+              return next();
+            }
+          } catch (freeRequestError) {
             logger.warn("Failed to get agent free requests left", {
               error: freeRequestError,
               teamId: req.auth.team_id,
             });
-          } else {
-            if (data?.[0]?.free_requests_left !== 0) {
-              return next();
-            }
           }
         }
       }
 
       const requestedCredits = minimum ?? 1;
-      const useAutumnCheck =
-        !!req.auth.org_id && isAutumnCheckEnabled(req.auth.org_id);
 
-      const autumnProperties = {
-        source: "checkCreditsMiddleware",
-        path: req.path,
-      };
-      const [legacyCheck, autumnResult] = await Promise.all([
-        checkTeamCredits(req.acuc ?? null, req.auth.team_id, requestedCredits),
-        useAutumnCheck
-          ? autumnService.checkCredits({
-              teamId: req.auth.team_id,
-              value: requestedCredits,
-              properties: autumnProperties,
-            })
-          : null,
-      ]);
-      let { success, remainingCredits, chunk } = legacyCheck;
+      const autumnResult = await autumnService.checkCredits({
+        teamId: req.auth.team_id,
+        value: requestedCredits,
+        properties: {
+          source: "checkCreditsMiddleware",
+          path: req.path,
+        },
+        featureId,
+      });
 
-      if (autumnResult !== null) {
-        const dryRun = isAutumnCheckDryRun();
-        if (autumnResult.allowed !== legacyCheck.success) {
-          logger.warn("Autumn check result diverged from legacy credit gate", {
-            teamId: req.auth.team_id,
-            path: req.path,
-            requestedCredits,
-            autumnAllowed: autumnResult.allowed,
-            autumnRemaining: autumnResult.remaining,
-            legacyAllowed: legacyCheck.success,
-            dryRun,
-          });
-        }
-        if (dryRun) {
-          logger.info("Autumn check dry-run result (not enforced)", {
-            teamId: req.auth.team_id,
-            path: req.path,
-            requestedCredits,
-            autumnAllowed: autumnResult.allowed,
-            autumnRemaining: autumnResult.remaining,
-            legacyAllowed: legacyCheck.success,
-          });
-        } else {
-          success = autumnResult.allowed;
-          remainingCredits = autumnResult.remaining;
-        }
+      // Autumn is the source of truth for credits. If it's unavailable
+      // (returns null), fail open — matches the behavior in browser.ts /
+      // scrape-browser.ts and avoids turning an Autumn outage into a
+      // customer outage.
+      if (autumnResult === null) {
+        req.account = { remainingCredits: Infinity };
+        return next();
       }
 
-      if (chunk) {
-        req.acuc = chunk;
-      }
+      const success = autumnResult.allowed;
+      // When Autumn allows the request (including overage), don't let a
+      // small remaining balance clamp downstream limits (e.g. crawl).
+      const remainingCredits = success ? Infinity : autumnResult.remaining;
       req.account = { remainingCredits };
       if (!success) {
         if (
@@ -228,6 +196,7 @@ export function checkCreditsMiddleware(
 
 export function authMiddleware(
   rateLimiterMode: RateLimiterMode,
+  options: { allowKeyless?: boolean } = {},
 ): (req: RequestWithMaybeAuth, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     (async () => {
@@ -243,10 +212,18 @@ export function authMiddleware(
       //   currentRateLimiterMode = RateLimiterMode.ScrapeAgentPreview;
       // }
 
-      const auth = await authenticateUser(req, res, currentRateLimiterMode);
+      const auth = await authenticateUser(
+        req,
+        res,
+        currentRateLimiterMode,
+        options,
+      );
 
       if (!auth.success) {
         if (!res.headersSent) {
+          if (auth.status === 401 || auth.agentAuthDiscovery) {
+            applyAgentAuthDiscoveryHeader(res);
+          }
           return res
             .status(auth.status)
             .json({ success: false, error: auth.error });
@@ -298,7 +275,10 @@ export function blocklistMiddleware(
 ) {
   if (
     typeof req.body.url === "string" &&
-    isUrlBlocked(req.body.url, req.acuc?.flags ?? null)
+    isUrlBlocked(req.body.url, req.acuc?.flags ?? null, {
+      team_id: req.acuc?.team_id ?? null,
+      origin: typeof req.body.origin === "string" ? req.body.origin : null,
+    })
   ) {
     if (!res.headersSent) {
       return res.status(403).json({

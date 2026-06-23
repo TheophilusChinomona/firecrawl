@@ -18,16 +18,18 @@ import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { logger as _logger } from "../../lib/logger";
 import type { Logger } from "winston";
 import { CostTracking } from "../../lib/cost-tracking";
-import { supabase_service } from "../../services/supabase";
+import { eq } from "drizzle-orm";
+import { db } from "../../db/connection";
+import * as schema from "../../db/schema";
 import { fromV1ScrapeOptions } from "../v2/types";
 import { ScrapeJobTimeoutError } from "../../lib/error";
-import { scrapeQueue } from "../../services/worker/nuq";
+import { scrapeQueue } from "../../services/worker/nuq-router";
 import {
   applyZdrScope,
   captureExceptionWithZdrCheck,
 } from "../../services/sentry";
 import { getJobPriority } from "../../lib/job-priority";
-import { getSearchZDR } from "../../lib/zdr-helpers";
+import { getSearchForcedKind } from "../../lib/zdr-helpers";
 
 interface DocumentWithCostTracking {
   document: Document;
@@ -52,11 +54,16 @@ async function scrapeX402SearchResult(
 
   const costTracking = new CostTracking();
 
-  const zeroDataRetention = getSearchZDR(flags) === "forced";
+  const zeroDataRetention = getSearchForcedKind(flags) !== null;
   applyZdrScope(zeroDataRetention);
 
   try {
-    if (isUrlBlocked(searchResult.url, flags)) {
+    if (
+      isUrlBlocked(searchResult.url, flags, {
+        team_id: options.teamId,
+        origin: options.origin,
+      })
+    ) {
       throw new Error("Could not scrape url: " + UNSUPPORTED_SITE_MESSAGE);
     }
     logger.info("Adding scrape job [x402]", {
@@ -127,17 +134,14 @@ async function scrapeX402SearchResult(
 
     let costTracking: ReturnType<typeof CostTracking.prototype.toJSON>;
     if (config.USE_DB_AUTHENTICATION) {
-      const { data: costTrackingResponse, error: costTrackingError } =
-        await supabase_service
-          .from("scrapes")
-          .select("cost_tracking")
-          .eq("id", jobId);
+      const costTrackingResponse = await db
+        .select({ cost_tracking: schema.scrapes.cost_tracking })
+        .from(schema.scrapes)
+        .where(eq(schema.scrapes.id, jobId));
 
-      if (costTrackingError) {
-        throw costTrackingError;
-      }
-
-      costTracking = costTrackingResponse?.[0]?.cost_tracking;
+      costTracking = costTrackingResponse?.[0]?.cost_tracking as ReturnType<
+        typeof CostTracking.prototype.toJSON
+      >;
     } else {
       costTracking = new CostTracking().toJSON();
     }
@@ -181,21 +185,16 @@ export async function x402SearchController(
   res: Response<SearchResponse & { request?: any }>,
 ) {
   const jobId = uuidv7();
+  const teamForcedKind = getSearchForcedKind(req.acuc?.flags);
+  const zeroDataRetention = teamForcedKind !== null;
   let logger = _logger.child({
     jobId,
     teamId: req.auth.team_id,
     module: "x402-search",
     method: "x402SearchController",
-    zeroDataRetention: getSearchZDR(req.acuc?.flags) === "forced",
+    zeroDataRetention,
+    teamForcedKind,
   });
-
-  if (getSearchZDR(req.acuc?.flags) === "forced") {
-    return res.status(400).json({
-      success: false,
-      error:
-        "Your team has zero data retention enabled. This is not supported on x402/search. Please contact support@firecrawl.com to unblock this feature.",
-    });
-  }
 
   let responseData: SearchResponse = {
     success: true,
@@ -229,7 +228,7 @@ export async function x402SearchController(
       origin: req.body.origin ?? "api",
       integration: req.body.integration,
       target_hint: req.body.query,
-      zeroDataRetention: false, // not supported for x402 search
+      zeroDataRetention,
       api_key_id: req.acuc?.api_key_id ?? null,
     });
 
@@ -254,7 +253,11 @@ export async function x402SearchController(
 
     if (req.body.ignoreInvalidURLs) {
       searchResults = searchResults.filter(
-        result => !isUrlBlocked(result.url, req.acuc?.flags ?? null),
+        result =>
+          !isUrlBlocked(result.url, req.acuc?.flags ?? null, {
+            team_id: req.auth.team_id,
+            origin: req.body.origin ?? null,
+          }),
       );
     }
 
@@ -342,7 +345,7 @@ export async function x402SearchController(
         team_id: req.auth.team_id,
         options: { ...req.body, scrapeOptions: undefined, query: undefined },
         credits_cost: responseData.data.length,
-        zeroDataRetention: false, // not supported
+        zeroDataRetention,
       },
       false,
     );
@@ -358,7 +361,7 @@ export async function x402SearchController(
     }
 
     captureExceptionWithZdrCheck(error, {
-      extra: { zeroDataRetention: false },
+      extra: { zeroDataRetention },
     });
     logger.error("Unhandled error occurred in search [x402]", { error });
     return res.status(500).json({

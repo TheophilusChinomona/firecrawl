@@ -1,14 +1,9 @@
-import { v7 as uuidv7 } from "uuid";
 import { NuQJob } from "../worker/nuq";
 import { ScrapeJobData } from "../../types";
-import { getJobFromGCS } from "../../lib/gcs-jobs";
-import {
-  monitorDiffGcsKey,
-  saveMonitorDiffArtifact,
-} from "../../lib/gcs-monitoring";
 import { logger as _logger } from "../../lib/logger";
 import { createWebhookSender, WebhookEvent } from "../webhook";
-import { diffMonitorMarkdown } from "./diff";
+import { computeAndPersistPageDiff } from "./diff-orchestrator";
+import { derivePageIsMeaningful } from "./page-events";
 import {
   getMonitorForUpdate,
   getMonitorPage,
@@ -29,6 +24,18 @@ function getDocumentStatusCode(doc: any): number | null {
     : null;
 }
 
+interface PageJudgment {
+  meaningful: boolean;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+  meaningfulChanges: Array<{
+    type: "added" | "removed" | "changed";
+    before: string | null;
+    after: string | null;
+    reason: string;
+  }>;
+}
+
 async function sendMonitorPageWebhook(params: {
   teamId: string;
   monitorId: string;
@@ -38,6 +45,9 @@ async function sendMonitorPageWebhook(params: {
   previousScrapeId?: string | null;
   currentScrapeId?: string | null;
   error?: string | null;
+  judgment?: PageJudgment | null;
+  diffText?: string | null;
+  diffJson?: Record<string, { previous: unknown; current: unknown }> | null;
 }) {
   try {
     const monitor = await getMonitorForUpdate(params.teamId, params.monitorId);
@@ -50,19 +60,38 @@ async function sendMonitorPageWebhook(params: {
       v0: false,
     });
 
-    await sender?.send(WebhookEvent.MONITOR_PAGE, {
+    const isMeaningful = derivePageIsMeaningful(
+      params.status,
+      params.judgment ?? null,
+    );
+    const diff =
+      params.diffText || params.diffJson
+        ? {
+            ...(params.diffText ? { text: params.diffText } : {}),
+            ...(params.diffJson ? { json: params.diffJson } : {}),
+          }
+        : null;
+    const payload = {
       success: params.status !== "error",
-      data: {
-        monitorId: params.monitorId,
-        checkId: params.checkId,
-        url: params.url,
-        status: params.status,
-        previousScrapeId: params.previousScrapeId ?? null,
-        currentScrapeId: params.currentScrapeId ?? null,
-        error: params.error ?? null,
-      },
+      data: [
+        {
+          monitorId: params.monitorId,
+          checkId: params.checkId,
+          url: params.url,
+          status: params.status,
+          previousScrapeId: params.previousScrapeId ?? null,
+          currentScrapeId: params.currentScrapeId ?? null,
+          error: params.error ?? null,
+          isMeaningful,
+          judgment: params.judgment ?? null,
+          diff,
+        },
+      ],
       error: params.error ?? undefined,
-    });
+    };
+    if (sender) {
+      await sender.send(WebhookEvent.MONITOR_PAGE, payload);
+    }
   } catch (error) {
     logger.warn("Failed to send monitor page webhook", {
       error,
@@ -88,42 +117,48 @@ export async function recordMonitorScrapeSuccess(
     url,
   });
 
-  let status: "same" | "new" | "changed" = "new";
-  let diffGcsKey: string | null = null;
-  let diffTextBytes: number | null = null;
-  let diffJsonBytes: number | null = null;
+  // The monitor row's target carries the canonical formats; fetch it to
+  // decide whether this run is a JSON-extraction monitor.
+  const monitorForRun = await getMonitorForUpdate(
+    job.data.team_id,
+    monitoring.monitorId,
+  );
+  const targetFormats = monitorForRun?.targets?.find(
+    (t: any) => t.id === monitoring.targetId,
+  )?.scrapeOptions?.formats;
 
-  if (previous?.last_scrape_id && !previous.is_removed) {
-    const previousDoc = (await getJobFromGCS(previous.last_scrape_id))?.[0];
-    const previousMarkdown = previousDoc?.markdown;
-    const currentMarkdown = doc?.markdown;
-
-    if (previousMarkdown && currentMarkdown) {
-      const diff = diffMonitorMarkdown(previousMarkdown, currentMarkdown);
-      status = diff.status;
-
-      if (diff.status === "changed") {
-        diffGcsKey = monitorDiffGcsKey({
-          teamId: job.data.team_id,
-          monitorId: monitoring.monitorId,
-          checkId: monitoring.checkId,
-          pageId: uuidv7(),
-        });
-        const sizes = await saveMonitorDiffArtifact(diffGcsKey, {
-          url,
-          previousScrapeId: previous.last_scrape_id,
-          currentScrapeId: job.id,
-          text: diff.text,
-          json: diff.json,
-          generatedAt: new Date().toISOString(),
-        });
-        diffTextBytes = sizes.textBytes;
-        diffJsonBytes = sizes.jsonBytes;
-      }
-    } else {
-      status = "changed";
-    }
-  }
+  const targetCtFormat = Array.isArray(targetFormats)
+    ? (targetFormats as any[]).find((f: any) => f?.type === "changeTracking")
+    : undefined;
+  const {
+    status,
+    diffGcsKey,
+    diffTextBytes,
+    diffJsonBytes,
+    judgment,
+    diffText,
+    diffJson,
+    error,
+  } = await computeAndPersistPageDiff({
+    teamId: job.data.team_id,
+    monitorId: monitoring.monitorId,
+    checkId: monitoring.checkId,
+    url,
+    scrapeId: job.id,
+    doc,
+    previous: previous
+      ? {
+          last_scrape_id: previous.last_scrape_id,
+          is_removed: previous.is_removed,
+        }
+      : null,
+    formats: targetFormats,
+    goal:
+      monitorForRun?.judge_enabled && monitorForRun?.goal
+        ? monitorForRun.goal
+        : null,
+    extractionPrompt: targetCtFormat?.prompt ?? null,
+  });
 
   await upsertMonitorPage({
     monitorId: monitoring.monitorId,
@@ -137,6 +172,10 @@ export async function recordMonitorScrapeSuccess(
     metadata: {
       title: doc?.metadata?.title ?? null,
       statusCode: getDocumentStatusCode(doc),
+      contentType: doc?.metadata?.contentType ?? null,
+      numPages: doc?.metadata?.numPages ?? null,
+      proxyUsed: doc?.metadata?.proxyUsed ?? null,
+      postprocessorsUsed: doc?.metadata?.postprocessorsUsed ?? null,
       creditsUsed: doc?.metadata?.creditsUsed ?? null,
     },
   });
@@ -156,10 +195,16 @@ export async function recordMonitorScrapeSuccess(
       diff_text_bytes: diffTextBytes,
       diff_json_bytes: diffJsonBytes,
       status_code: getDocumentStatusCode(doc),
+      ...(error ? { error } : {}),
       metadata: {
         title: doc?.metadata?.title ?? null,
+        contentType: doc?.metadata?.contentType ?? null,
+        numPages: doc?.metadata?.numPages ?? null,
+        proxyUsed: doc?.metadata?.proxyUsed ?? null,
+        postprocessorsUsed: doc?.metadata?.postprocessorsUsed ?? null,
         creditsUsed: doc?.metadata?.creditsUsed ?? null,
       },
+      judgment: judgment ?? null,
     },
   ]);
 
@@ -172,6 +217,7 @@ export async function recordMonitorScrapeSuccess(
     status,
     previousScrapeId: previous?.last_scrape_id ?? null,
     diffGcsKey,
+    judgmentMeaningful: judgment?.meaningful,
   });
 
   await sendMonitorPageWebhook({
@@ -182,12 +228,16 @@ export async function recordMonitorScrapeSuccess(
     status,
     previousScrapeId: previous?.last_scrape_id ?? null,
     currentScrapeId: job.id,
+    judgment: judgment ?? null,
+    diffText: diffText ?? null,
+    diffJson: diffJson ?? null,
   });
 }
 
 export async function recordMonitorScrapeFailure(
   job: NuQJob<ScrapeJobData>,
   error: unknown,
+  creditsUsed?: number | null,
 ): Promise<void> {
   const monitoring = job.data.monitoring;
   if (!monitoring || job.data.mode !== "single_urls") return;
@@ -203,6 +253,9 @@ export async function recordMonitorScrapeFailure(
       status: "error",
       current_scrape_id: job.id,
       error: error instanceof Error ? error.message : String(error),
+      metadata: {
+        creditsUsed: creditsUsed ?? null,
+      },
     },
   ]);
 

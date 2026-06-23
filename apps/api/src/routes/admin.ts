@@ -7,18 +7,20 @@ import { acucCacheClearController } from "../controllers/v0/admin/acuc-cache-cle
 import { checkFireEngine } from "../controllers/v0/admin/check-fire-engine";
 import { cclogController } from "../controllers/v0/admin/cclog";
 import { indexQueuePrometheus } from "../controllers/v0/admin/index-queue-prometheus";
-import { zdrcleanerController } from "../controllers/v0/admin/zdrcleaner";
 import { triggerPrecrawl } from "../controllers/v0/admin/precrawl";
 import {
   metricsController,
+  nuqFdbMetricsController,
   nuqMetricsController,
 } from "../controllers/v0/admin/metrics";
 import { realtimeSearchController } from "../controllers/v2/f-search";
 import { concurrencyQueueBackfillController } from "../controllers/v0/admin/concurrency-queue-backfill";
-import { integCreateUserController } from "../controllers/v0/admin/create-user";
-import { integValidateApiKeyController } from "../controllers/v0/admin/validate-api-key";
-import { integRotateApiKeyController } from "../controllers/v0/admin/rotate-api-key";
 import { crawlMonitorController } from "../controllers/v0/admin/crawl-monitor";
+import {
+  handleIntegrationAdminCreateUserProxy,
+  handleIntegrationAdminRotateProxy,
+  handleIntegrationAdminValidateProxy,
+} from "../lib/admin-integration-integrations-proxy";
 import { RateLimiterMode } from "../types";
 
 export const adminRouter = express.Router();
@@ -46,11 +48,6 @@ adminRouter.get(
 adminRouter.get(`/admin/${config.BULL_AUTH_KEY}/cclog`, wrap(cclogController));
 
 adminRouter.get(
-  `/admin/${config.BULL_AUTH_KEY}/zdrcleaner`,
-  wrap(zdrcleanerController),
-);
-
-adminRouter.get(
   `/admin/${config.BULL_AUTH_KEY}/index-queue-prometheus`,
   wrap(indexQueuePrometheus),
 );
@@ -68,6 +65,11 @@ adminRouter.get(
 adminRouter.get(
   `/admin/${config.BULL_AUTH_KEY}/nuq-metrics`,
   wrap(nuqMetricsController),
+);
+
+adminRouter.get(
+  `/admin/${config.BULL_AUTH_KEY}/nuq-fdb-metrics`,
+  wrap(nuqFdbMetricsController),
 );
 
 adminRouter.post(
@@ -89,15 +91,15 @@ adminRouter.post(
 
 adminRouter.post(
   `/admin/integration/create-user`,
-  wrap(integCreateUserController),
+  wrap(handleIntegrationAdminCreateUserProxy),
 );
 
 adminRouter.post(
   `/admin/integration/validate-api-key`,
-  wrap(integValidateApiKeyController),
+  wrap(handleIntegrationAdminValidateProxy),
 );
 
 adminRouter.post(
   `/admin/integration/rotate-api-key`,
-  wrap(integRotateApiKeyController),
+  wrap(handleIntegrationAdminRotateProxy),
 );
