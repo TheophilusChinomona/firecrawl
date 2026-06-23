@@ -123,7 +123,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
-      - "traefik.http.routers.fc-api.rule=Host(`crawl.theochinomona.tech`)"
+      - "traefik.http.routers.fc-api.rule=Host(`api.theochinomona.tech`)"
       - "traefik.http.routers.fc-api.entrypoints=websecure"
       - "traefik.http.routers.fc-api.tls.certresolver=cloudflare"
       - "traefik.http.services.fc-api.loadbalancer.server.port=${INTERNAL_PORT:-3002}"
