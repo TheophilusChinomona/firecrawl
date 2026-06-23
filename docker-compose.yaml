@@ -122,10 +122,9 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.docker.network=traefik-public"
       - "traefik.http.routers.fc-api.rule=Host(`firecrawl.theochinomona.tech`) || Host(`api.theochinomona.tech`)"
-      - "traefik.http.routers.fc-api.entrypoints=websecure"
-      - "traefik.http.routers.fc-api.tls.certresolver=cloudflare"
+      - "traefik.http.routers.fc-api.entrypoints=web"
       - "traefik.http.services.fc-api.loadbalancer.server.port=${INTERNAL_PORT:-3002}"
 
   redis:
@@ -206,11 +205,10 @@ services:
       LLM_MODEL_FAST: ${LLM_MODEL_FAST:-anthropic/claude-haiku-4-5}
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.docker.network=traefik-public"
       - "traefik.http.routers.fc-mcp.rule=Host(`crawl.theochinomona.tech`) && PathPrefix(`/mcp`)"
       - "traefik.http.routers.fc-mcp.priority=100"
-      - "traefik.http.routers.fc-mcp.entrypoints=websecure"
-      - "traefik.http.routers.fc-mcp.tls.certresolver=cloudflare"
+      - "traefik.http.routers.fc-mcp.entrypoints=web"
       - "traefik.http.services.fc-mcp.loadbalancer.server.port=3000"
     depends_on:
       api:
