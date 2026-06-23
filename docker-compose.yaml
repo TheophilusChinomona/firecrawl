@@ -117,6 +117,16 @@ services:
     cpus: 4.0
     mem_limit: 8G
     memswap_limit: 8G
+    networks:
+      - backend
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.fc-api.rule=Host(`crawl.theochinomona.tech`)"
+      - "traefik.http.routers.fc-api.entrypoints=websecure"
+      - "traefik.http.routers.fc-api.tls.certresolver=cloudflare"
+      - "traefik.http.services.fc-api.loadbalancer.server.port=${INTERNAL_PORT:-3002}"
 
   redis:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
