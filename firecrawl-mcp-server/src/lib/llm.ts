@@ -10,11 +10,21 @@
 
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
-import type {
-  CompleteOptions,
-  CompleteResult,
-  LLMProvider,
-} from '@fire-enrich/core';
+
+// Inlined from @fire-enrich/core (removed dependency)
+export type LLMTier = 'fast' | 'smart';
+export interface Message { role: 'system' | 'user' | 'assistant'; content: string; }
+export interface CompleteOptions {
+  messages: Message[];
+  schema?: import('zod').ZodSchema;
+  schemaName?: string;
+  jsonMode?: boolean;
+  tier?: LLMTier;
+  temperature?: number;
+  maxTokens?: number;
+}
+export interface CompleteResult { text: string; parsed?: unknown; }
+export interface LLMProvider { complete(opts: CompleteOptions): Promise<CompleteResult>; }
 
 // @fire-enrich/core ships zod v3 schemas in its types, this MCP package
 // uses zod v4. Cast at the openai/helpers/zod call site — the runtime

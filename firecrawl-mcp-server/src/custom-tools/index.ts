@@ -12,7 +12,6 @@ import type { MCP } from './types.js';
 
 import { register as registerResearch } from './research.js';
 import { register as registerEnrich } from './enrich.js';
-import { register as registerFireEnrichEmail } from './fire-enrich-email.js';
 import { register as registerMonitor } from './monitor.js';
 import { register as registerBrandAudit } from './brand-audit.js';
 import { register as registerSeoAudit } from './seo-audit.js';
@@ -34,7 +33,6 @@ export function registerCustomTools(server: MCP): void {
 
   if (allow('firecrawl_research')) registerResearch(server);
   if (allow('firecrawl_enrich')) registerEnrich(server);
-  if (allow('fire_enrich_email')) registerFireEnrichEmail(server);
   if (allow('firecrawl_monitor')) registerMonitor(server);
   if (allow('firecrawl_brand_audit')) registerBrandAudit(server);
   if (allow('firecrawl_seo_audit')) registerSeoAudit(server);

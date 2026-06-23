@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@fire-enrich/core':
-        specifier: link:../fire-enrich/packages/core
-        version: link:../fire-enrich/packages/core
       '@mendable/firecrawl-js':
         specifier: 4.17.0
         version: 4.17.0

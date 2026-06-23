@@ -29,7 +29,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@fire-enrich/core": "link:../fire-enrich/packages/core",
     "@mendable/firecrawl-js": "4.17.0",
     "dotenv": "^17.2.2",
     "firecrawl-fastmcp": "^1.0.4",

@@ -1,0 +1,120 @@
+# Phase 0 LOCAL/BASELINE compose for the Crabbox runner (crabbox-runner).
+#
+# Self-contained (run with ONLY this file): the core scrape/crawl pipeline.
+#   docker compose -f docker-compose.local.yml up -d
+#
+# WHY standalone + host networking:
+# The runner is an UNPRIVILEGED LXC container. runc cannot write the namespaced
+# sysctl net.ipv4.ip_unprivileged_port_start when Docker creates a per-container
+# network namespace, so Docker BRIDGE networking fails there. Host networking
+# (which reuses the box's net namespace) works. Because `network_mode: host`
+# conflicts with the base compose's per-service `networks:`, this is a separate
+# file rather than an override. All services share the box's localhost, so peers
+# are addressed as localhost:<port> instead of by Docker service name.
+#
+# Queue backend stays Postgres (no FoundationDB). No auth/edge services here.
+name: firecrawl-local
+
+services:
+  redis:
+    image: redis:alpine
+    network_mode: host
+    command: redis-server --bind 127.0.0.1 --port 6379
+    logging:
+      driver: "json-file"
+      options: { max-size: "5m", max-file: "2", compress: "true" }
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    network_mode: host
+    command: rabbitmq-server
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options: { max-size: "5m", max-file: "2", compress: "true" }
+
+  nuq-postgres:
+    build: apps/nuq-postgres
+    network_mode: host
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - nuq-postgres-data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3", compress: "true" }
+
+  playwright-service:
+    build: apps/playwright-service-ts
+    network_mode: host
+    environment:
+      PORT: 3000
+      PROXY_SERVER: ${PROXY_SERVER:-}
+      PROXY_USERNAME: ${PROXY_USERNAME:-}
+      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      BLOCK_MEDIA: ${BLOCK_MEDIA:-}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-10}
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3", compress: "true" }
+
+  api:
+    build: apps/api
+    network_mode: host
+    ulimits:
+      nofile: { soft: 65535, hard: 65535 }
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis: { condition: service_started }
+      playwright-service: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+      nuq-postgres: { condition: service_started }
+    environment:
+      HOST: "0.0.0.0"
+      PORT: ${INTERNAL_PORT:-3002}
+      EXTRACT_WORKER_PORT: ${EXTRACT_WORKER_PORT:-3004}
+      WORKER_PORT: ${WORKER_PORT:-3005}
+      ENV: local
+      HARNESS_STARTUP_TIMEOUT_MS: ${HARNESS_STARTUP_TIMEOUT_MS:-60000}
+      # host networking: every peer is on localhost
+      REDIS_URL: redis://localhost:6379
+      REDIS_RATE_LIMIT_URL: redis://localhost:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://localhost:3000/scrape
+      NUQ_RABBITMQ_URL: amqp://localhost:5672
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
+      NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-8}
+      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-5}
+      BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-5}
+      CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-10}
+      BULL_AUTH_KEY: ${BULL_AUTH_KEY:-}
+      TEST_API_KEY: ${TEST_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT:-}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+    command: node dist/src/harness.js --start-docker
+    cpus: 4.0
+    mem_limit: 8G
+    memswap_limit: 8G
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3", compress: "true" }
+
+volumes:
+  nuq-postgres-data:
