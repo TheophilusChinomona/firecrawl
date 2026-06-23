@@ -9,6 +9,7 @@ on:
 
 env:
   IDMUX_URL: ${{ secrets.IDMUX_URL }}
+  FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
 
 jobs:
   test:
@@ -23,7 +24,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: './apps/js-sdk/firecrawl/pnpm-lock.yaml'
       - name: Install dependencies
@@ -33,5 +34,6 @@ jobs:
         run: pnpm run build
         working-directory: ./apps/js-sdk/firecrawl
       - name: Run tests
+        if: env.FIRECRAWL_API_KEY != ''
         run: pnpm run test
         working-directory: ./apps/js-sdk/firecrawl
