@@ -206,8 +206,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
-      - "traefik.http.routers.fc-mcp.rule=Host(`crawl.theochinomona.tech`) && PathPrefix(`/mcp`)"
-      - "traefik.http.routers.fc-mcp.priority=100"
+      - "traefik.http.routers.fc-mcp.rule=Host(`mcp.theochinomona.tech`)"
       - "traefik.http.routers.fc-mcp.entrypoints=web"
       - "traefik.http.services.fc-mcp.loadbalancer.server.port=3000"
     depends_on:
