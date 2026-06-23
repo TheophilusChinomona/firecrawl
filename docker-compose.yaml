@@ -122,7 +122,7 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       - "traefik.http.routers.fc-api.rule=Host(`crawl.theochinomona.tech`)"
       - "traefik.http.routers.fc-api.entrypoints=websecure"
       - "traefik.http.routers.fc-api.tls.certresolver=cloudflare"
@@ -236,7 +236,7 @@ services:
       LLM_MODEL_FAST: ${LLM_MODEL_FAST:-anthropic/claude-haiku-4-5}
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       # Higher priority than the api router so PathPrefix(`/mcp`) wins.
       - "traefik.http.routers.fc-mcp.rule=Host(`crawl.theochinomona.tech`) && PathPrefix(`/mcp`)"
       - "traefik.http.routers.fc-mcp.priority=100"
@@ -319,7 +319,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       - "traefik.http.routers.fe-web.rule=Host(`enrich.theochinomona.tech`)"
       - "traefik.http.routers.fe-web.entrypoints=websecure"
       - "traefik.http.routers.fe-web.tls.certresolver=cloudflare"
