@@ -3,7 +3,7 @@ name: Deploy Firecrawl Stack
 on:
   push:
     branches:
-      - phase0/crabbox-selfhost-baseline
+      - production
     paths:
       - 'apps/api/**'
       - 'firecrawl-agent/**'
@@ -33,22 +33,24 @@ jobs:
             cd /home/openclaw/firecrawl
             git config --global --add safe.directory /home/openclaw/firecrawl
             git fetch origin
-            git checkout phase0/crabbox-selfhost-baseline
-            git pull origin phase0/crabbox-selfhost-baseline
+            git checkout production
+            git pull origin production
             docker compose up --build -d firecrawl-agent api
             docker image prune -f
             echo "Deploy complete: $(git log --oneline -1)"
-ENDSSH
+          ENDSSH
 
           rm -f ~/.ssh/deploy_key
 
       - name: Verify API is up
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
         run: |
           sleep 10
           curl -sf --max-time 15 \
             "https://firecrawl.theochinomona.tech/v1/scrape" \
-            -X POST -H 'Content-Type: application/json' \
+            -X POST \
+            -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
+            -H 'Content-Type: application/json' \
             -d '{"url":"https://example.com","formats":["markdown"]}' \
             | python3 -c 'import sys,json; d=json.load(sys.stdin); print("API OK, title:", d.get("data",{}).get("metadata",{}).get("title","?"))'
