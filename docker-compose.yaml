@@ -220,6 +220,8 @@ services:
       - "traefik.http.routers.fc-mcp.rule=Host(`mcp.theochinomona.tech`)"
       - "traefik.http.routers.fc-mcp.entrypoints=web"
       - "traefik.http.services.fc-mcp.loadbalancer.server.port=3000"
+      # Same bearer gate as the API (fc-bearer middleware defined on the api service).
+      - "traefik.http.routers.fc-mcp.middlewares=fc-bearer@docker"
     depends_on:
       api:
         condition: service_started
