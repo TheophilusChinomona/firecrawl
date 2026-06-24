@@ -1,0 +1,23 @@
+# Bearer-token verifier for Traefik forwardAuth.
+# Traefik forwards the original request's headers here; we return 204 (allow)
+# only when Authorization matches the Firecrawl API key, else 401 (deny).
+#
+# Rendered by the nginx:alpine entrypoint via envsubst. Only ${FC_BEARER} is
+# substituted (NGINX_ENVSUBST_FILTER=^FC_ keeps nginx's own $http_* vars
+# untouched). The key is injected from .env at container start, never committed.
+server {
+    listen 80;
+    server_name _;
+
+    # Health/identity endpoint for debugging (not used by Traefik).
+    location = /healthz {
+        return 200 "ok\n";
+    }
+
+    location / {
+        if ($http_authorization = "Bearer ${FC_BEARER}") {
+            return 204;
+        }
+        return 401;
+    }
+}

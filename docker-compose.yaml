@@ -129,9 +129,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
-      - "traefik.http.routers.fc-api.rule=Host(`firecrawl.theochinomona.tech`) || Host(`api.theochinomona.tech`)"
+      - "traefik.http.routers.fc-api.rule=Host(`firecrawl.theochinomona.tech`) || Host(`api.theochinomona.tech`) || Host(`crawl.theochinomona.tech`)"
       - "traefik.http.routers.fc-api.entrypoints=web"
       - "traefik.http.services.fc-api.loadbalancer.server.port=${INTERNAL_PORT:-3002}"
+      # Bearer-token auth at the proxy (Firecrawl has no native key check).
+      # forwardAuth -> fc-authz returns 204 only when Authorization matches.
+      - "traefik.http.middlewares.fc-bearer.forwardauth.address=http://fc-authz:80/"
+      - "traefik.http.middlewares.fc-bearer.forwardauth.authResponseHeaders=X-Auth-Status"
+      - "traefik.http.routers.fc-api.middlewares=fc-bearer@docker"
 
   redis:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
@@ -282,6 +287,26 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+        compress: "true"
+
+  # Bearer-token verifier for the fc-api router's forwardAuth middleware.
+  # Reachable by Traefik over the traefik network via Docker DNS (fc-authz).
+  fc-authz:
+    image: nginx:alpine
+    networks:
+      - traefik
+    environment:
+      # Injected from .env (gitignored); rendered into the nginx conf at start.
+      FC_BEARER: ${FIRECRAWL_API_KEY}
+      NGINX_ENVSUBST_FILTER: "^FC_"
+    volumes:
+      - ./ops/fc-authz/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
         compress: "true"
 
 volumes:
