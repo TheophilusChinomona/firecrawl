@@ -1,0 +1,32 @@
+version: "1.0"
+source: firecrawl
+generatedAt: "2026-05-09T19:45:42.203Z"
+
+instincts:
+  - id: prefer-relative-imports
+    trigger: "import statement added or modified"
+    guidance: "Use relative imports rather than absolute or alias-based imports."
+    confidence: 0.85
+
+  - id: named-exports-only
+    trigger: "new export added"
+    guidance: "Use named exports. Avoid default exports."
+    confidence: 0.90
+
+  - id: feat-commit-prefix
+    trigger: "commit message drafted"
+    guidance: "Prefix commit messages with 'feat:' for new functionality, 'fix:' for bugs, 'revert:' for rollbacks."
+    confidence: 0.80
+
+  - id: revert-on-production-issue
+    trigger: "major feature merged; production or CI issue detected"
+    guidance: >
+      Immediately create a revert commit that restores all affected files to their
+      pre-feature state. Revert commit message should follow the pattern:
+      'revert: rollback <feature> due to <reason>'.
+    confidence: 0.88
+
+  - id: test-colocate
+    trigger: "new source file created under apps/api/src"
+    guidance: "Place corresponding test file under apps/api/src/__tests__/ matching the source filename with a .test.ts suffix."
+    confidence: 0.75
