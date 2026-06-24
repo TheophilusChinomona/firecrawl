@@ -7,11 +7,12 @@
 **Required status checks:**
 - [x] Require branches to be up to date before merging
 - [x] Require status checks to pass before merging
-- [x] Require up-to-date branches before merging
 
 **Status checks that must pass:**
-- `test-server` (existing test suite)
-- `deploy-self-hosted` (our new deployment workflow)
+- Select checks from the GitHub UI to avoid name mismatches.
+- Current checks:
+  - `Server Test Suite / Self-hosted environment tests (...)` (matrix-generated)
+  - `Deploy to Self-Hosted Server / deploy`
 
 **Branch protection rules:**
 - [x] Require a pull request before merging

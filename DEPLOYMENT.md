@@ -27,8 +27,10 @@ main (development) → deploy (production)
    - ✅ Allow theo to bypass required PRs
 
 #### Required Status Checks
-- `test-server` (existing tests)
-- `deploy-self-hosted` (deployment workflow)
+- Select required checks from the GitHub UI so names stay exact.
+- Current check names are:
+  - `Server Test Suite / Self-hosted environment tests (...)` (matrix-generated)
+  - `Deploy to Self-Hosted Server / deploy`
 
 ### 2. GitHub Secrets Setup
 
@@ -75,6 +77,20 @@ sudo chown deploy:deploy /opt/firecrawl
 # Copy docker-compose.yaml and env files
 # (GitHub Actions will handle this)
 ```
+
+#### Required Folder Layout for `docker-compose.yaml`
+
+This repo's compose file references sibling paths (`../fire-enrich` and parent context `..`), so the server must keep this layout:
+
+```text
+/opt
+├── firecrawl                # this repository (DEPLOY_PATH)
+├── fire-enrich              # sibling repo required by fire-enrich-web + cf-access-verifier Docker service builds
+└── firecrawl-mcp-server     # included from parent build context for firecrawl-mcp image
+```
+
+If you prefer a different layout, update the `build.context` paths in `docker-compose.yaml` to match your server paths.
+If you use the exact layout above, set `DEPLOY_PATH=/opt/firecrawl`.
 
 ### 4. Deployment Workflow
 
